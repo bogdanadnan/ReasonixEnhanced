@@ -10,3 +10,8 @@
 # so the desktop app resolves the same config/keys the CLI does). Never commit.
 /reasonix.toml
 /.env
+
+# `go build` binary produced in-tree (module reasonix/desktop → "desktop")
+/desktop
+# Wails dependency-change cache
+/frontend/package.json.md5

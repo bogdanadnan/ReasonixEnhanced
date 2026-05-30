@@ -7,7 +7,15 @@
 
 import { useCallback, useEffect, useReducer } from "react";
 import { app, onEvent } from "./bridge";
-import type { ContextInfo, HistoryMessage, Meta, WireApproval, WireEvent, WireUsage } from "./types";
+import type {
+  ContextInfo,
+  HistoryMessage,
+  MemoryView,
+  Meta,
+  WireApproval,
+  WireEvent,
+  WireUsage,
+} from "./types";
 
 export type ToolStatus = "running" | "done" | "error";
 
@@ -272,5 +280,32 @@ export function useController() {
     app.Compact().catch(() => {});
   }, []);
 
-  return { state, send, cancel, approve, setPlan, newSession, compact };
+  // Memory panel actions. fetchMemory re-reads the loaded snapshot; remember and
+  // saveDoc mutate then return so the caller can re-fetch to reflect the change.
+  const fetchMemory = useCallback((): Promise<MemoryView> => {
+    return app.Memory().catch(
+      () => ({ docs: [], facts: [], scopes: [], storeDir: "", available: false }),
+    );
+  }, []);
+
+  const remember = useCallback(async (scope: string, note: string) => {
+    await app.Remember(scope, note).catch(() => {});
+  }, []);
+
+  const saveDoc = useCallback(async (path: string, body: string) => {
+    await app.SaveDoc(path, body).catch(() => {});
+  }, []);
+
+  return {
+    state,
+    send,
+    cancel,
+    approve,
+    setPlan,
+    newSession,
+    compact,
+    fetchMemory,
+    remember,
+    saveDoc,
+  };
 }

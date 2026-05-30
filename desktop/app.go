@@ -13,6 +13,7 @@ import (
 	"reasonix/internal/boot"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
+	"reasonix/internal/memory"
 )
 
 // eventChannel is the Wails runtime event name the frontend subscribes to for the
@@ -259,6 +260,101 @@ func (a *App) ListDir(rel string) []DirEntry {
 	sort.Slice(dirs, func(i, j int) bool { return strings.ToLower(dirs[i].Name) < strings.ToLower(dirs[j].Name) })
 	sort.Slice(files, func(i, j int) bool { return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name) })
 	return append(dirs, files...)
+}
+
+// --- memory panel (frontend ⇄ controller) ---
+
+// MemoryDoc is one loaded doc-memory file for the panel: path, scope, and body.
+type MemoryDoc struct {
+	Path  string `json:"path"`
+	Scope string `json:"scope"`
+	Body  string `json:"body"`
+}
+
+// MemoryFact is one saved auto-memory, surfaced read-only in the panel.
+type MemoryFact struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Type        string `json:"type"`
+	Body        string `json:"body"`
+}
+
+// MemoryScope is one writable quick-add target (scope id + the file it writes to).
+type MemoryScope struct {
+	Scope string `json:"scope"`
+	Path  string `json:"path"`
+}
+
+// MemoryView is the whole memory panel payload: hierarchical docs, saved facts,
+// and the writable scopes for the quick-add selector.
+type MemoryView struct {
+	Docs      []MemoryDoc   `json:"docs"`
+	Facts     []MemoryFact  `json:"facts"`
+	Scopes    []MemoryScope `json:"scopes"`
+	StoreDir  string        `json:"storeDir"`
+	Available bool          `json:"available"`
+}
+
+// writableScopes are the quick-add targets the panel offers, broad → specific.
+var writableScopes = []memory.Scope{memory.ScopeUser, memory.ScopeProject, memory.ScopeLocal}
+
+// Memory returns the loaded memory for the panel: the REASONIX.md hierarchy, the
+// saved auto-memories, and the writable scopes. Read-only; mutations go through
+// Remember / SaveDoc.
+func (a *App) Memory() MemoryView {
+	if a.ctrl == nil {
+		return MemoryView{}
+	}
+	set := a.ctrl.Memory()
+	if set == nil {
+		return MemoryView{}
+	}
+	view := MemoryView{StoreDir: set.Store.Dir, Available: true}
+	for _, d := range set.Docs {
+		view.Docs = append(view.Docs, MemoryDoc{Path: d.Path, Scope: string(d.Scope), Body: d.Body})
+	}
+	for _, f := range set.Store.List() {
+		view.Facts = append(view.Facts, MemoryFact{
+			Name: f.Name, Description: f.Description, Type: string(f.Type), Body: f.Body,
+		})
+	}
+	for _, sc := range writableScopes {
+		if p := set.DocPath(sc); p != "" { // user scope yields "" when no config dir
+			view.Scopes = append(view.Scopes, MemoryScope{Scope: string(sc), Path: p})
+		}
+	}
+	return view
+}
+
+// Remember quick-adds a one-line note to the doc-memory file for scope — the
+// panel's explicit "remember" action, equivalent to typing "#<note>". An unknown
+// scope falls back to project. Returns the file written.
+func (a *App) Remember(scope, note string) (string, error) {
+	if a.ctrl == nil {
+		return "", nil
+	}
+	return a.ctrl.QuickAdd(parseScope(scope), note)
+}
+
+// SaveDoc overwrites a memory doc with the panel editor's contents. The controller
+// validates path against the recognized memory files. Returns the file written.
+func (a *App) SaveDoc(path, body string) (string, error) {
+	if a.ctrl == nil {
+		return "", nil
+	}
+	return a.ctrl.SaveDoc(path, body)
+}
+
+// parseScope maps a frontend scope id to a memory.Scope, defaulting to project.
+func parseScope(s string) memory.Scope {
+	switch memory.Scope(s) {
+	case memory.ScopeUser:
+		return memory.ScopeUser
+	case memory.ScopeLocal:
+		return memory.ScopeLocal
+	default:
+		return memory.ScopeProject
+	}
 }
 
 // eventSink is the controller's event.Sink in desktop mode: it forwards every

@@ -81,3 +81,30 @@ export interface DirEntry {
   name: string;
   isDir: boolean;
 }
+
+// Memory panel payloads (desktop/app.go MemoryView).
+export interface MemoryDoc {
+  path: string;
+  scope: string; // "user" | "ancestor" | "project" | "local"
+  body: string;
+}
+
+export interface MemoryFact {
+  name: string;
+  description: string;
+  type: string; // "user" | "feedback" | "project" | "reference"
+  body: string;
+}
+
+export interface MemoryScope {
+  scope: string; // "user" | "project" | "local"
+  path: string;
+}
+
+export interface MemoryView {
+  docs: MemoryDoc[];
+  facts: MemoryFact[];
+  scopes: MemoryScope[];
+  storeDir: string;
+  available: boolean;
+}

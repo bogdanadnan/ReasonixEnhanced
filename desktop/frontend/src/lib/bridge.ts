@@ -5,7 +5,15 @@
 // that streams a canned turn through the same contract — letting the whole UI be
 // developed and laid out without rebuilding the Go side.
 
-import type { CommandInfo, ContextInfo, DirEntry, HistoryMessage, Meta, WireEvent } from "./types";
+import type {
+  CommandInfo,
+  ContextInfo,
+  DirEntry,
+  HistoryMessage,
+  MemoryView,
+  Meta,
+  WireEvent,
+} from "./types";
 
 // AppBindings mirrors desktop/app.go's exported method set. Keep in sync by hand
 // (or regenerate with `wails generate module` and import wailsjs instead).
@@ -21,6 +29,12 @@ export interface AppBindings {
   Meta(): Promise<Meta>;
   Commands(): Promise<CommandInfo[]>;
   ListDir(rel: string): Promise<DirEntry[]>;
+  // Memory panel: read the loaded REASONIX.md hierarchy + saved auto-memories,
+  // quick-add a note to a scope's REASONIX.md (≡ "#<note>"), and overwrite a doc
+  // from the in-place editor.
+  Memory(): Promise<MemoryView>;
+  Remember(scope: string, note: string): Promise<string>;
+  SaveDoc(path: string, body: string): Promise<string>;
 }
 
 interface WailsRuntime {
@@ -175,6 +189,45 @@ function makeMockApp(): AppBindings {
         ];
       }
       return [{ name: "file.go", isDir: false }];
+    },
+    async Memory() {
+      return {
+        available: true,
+        storeDir: "~/.config/reasonix/projects/-mock/memory",
+        docs: [
+          {
+            path: "REASONIX.md",
+            scope: "project",
+            body: "# Reasonix project memory\n\nMock doc shown in the browser dev seam.\n\n## Notes\n\n- prefers concise replies",
+          },
+          {
+            path: "~/.config/reasonix/REASONIX.md",
+            scope: "user",
+            body: "# User memory\n\nAlways respond in 中文.",
+          },
+        ],
+        facts: [
+          {
+            name: "prefers-tabs",
+            description: "User prefers tabs",
+            type: "user",
+            body: "Indent with tabs.",
+          },
+        ],
+        scopes: [
+          { scope: "user", path: "~/.config/reasonix/REASONIX.md" },
+          { scope: "project", path: "REASONIX.md" },
+          { scope: "local", path: "REASONIX.local.md" },
+        ],
+      };
+    },
+    async Remember(scope: string, note: string) {
+      emit({ kind: "notice", level: "info", text: `remembered → ${scope}` });
+      return `${scope} REASONIX.md (mock): ${note}`;
+    },
+    async SaveDoc(path: string, _body: string) {
+      emit({ kind: "notice", level: "info", text: `saved → ${path}` });
+      return path;
     },
   };
 }
