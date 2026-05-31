@@ -117,25 +117,20 @@ func (m chatTUI) applyRewind() (tea.Model, tea.Cmd) {
 	meta := r.metas[r.sel]
 	act := rewindActions[r.scope]
 	m.rewind = nil
+	// The controller emits a notice for the outcome (success or failure) of each of
+	// these, so the picker doesn't add its own — it would double on the CLI.
 	switch act.kind {
 	case "fork":
-		if _, err := m.ctrl.Fork(meta.Turn); err != nil {
-			m.notice("fork: " + err.Error())
-		}
-		return m, nil // controller notices; the branch is a new session
+		_, _ = m.ctrl.Fork(meta.Turn)
+		return m, nil // the branch is a new session
 	case "summ-from":
-		if err := m.ctrl.SummarizeFrom(context.Background(), meta.Turn); err != nil {
-			m.notice("summarize: " + err.Error())
-		}
+		_ = m.ctrl.SummarizeFrom(context.Background(), meta.Turn)
 		return m, nil
 	case "summ-upto":
-		if err := m.ctrl.SummarizeUpTo(context.Background(), meta.Turn); err != nil {
-			m.notice("summarize: " + err.Error())
-		}
+		_ = m.ctrl.SummarizeUpTo(context.Background(), meta.Turn)
 		return m, nil
 	}
 	if err := m.ctrl.Rewind(meta.Turn, act.scope); err != nil {
-		m.notice("rewind: " + err.Error())
 		return m, nil
 	}
 	// The controller emits a notice marking the rewind point; the committed

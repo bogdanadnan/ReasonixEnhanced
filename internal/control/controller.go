@@ -611,6 +611,14 @@ func (c *Controller) Checkpoints() []checkpoint.Meta {
 	return c.cp.List()
 }
 
+// rewindFail emits the error as a Warn notice (so a frontend that swallows the
+// returned error — e.g. the desktop bridge's .catch — still shows the user why
+// the rewind did nothing) and returns it.
+func (c *Controller) rewindFail(err error) error {
+	c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: err.Error()})
+	return err
+}
+
 // Rewind restores the session to the start of `turn`: Code reverts every file that
 // turn (or a later one) changed to its pre-turn content; Conversation truncates the
 // message log back to that turn; Both does both. Refused while a turn is running.
@@ -619,27 +627,27 @@ func (c *Controller) Checkpoints() []checkpoint.Meta {
 // Frontends re-render their transcript from History after the call.
 func (c *Controller) Rewind(turn int, scope RewindScope) error {
 	if c.cp == nil || c.executor == nil {
-		return fmt.Errorf("checkpoints unavailable")
+		return c.rewindFail(fmt.Errorf("checkpoints unavailable"))
 	}
 	c.mu.Lock()
 	running := c.running
 	boundary, hasBound := c.cpBound[turn]
 	c.mu.Unlock()
 	if running {
-		return fmt.Errorf("cannot rewind while a turn is running")
+		return c.rewindFail(fmt.Errorf("cannot rewind while a turn is running"))
 	}
 
 	if scope == RewindCode || scope == RewindBoth {
 		written, deleted, err := c.cp.RestoreCode(turn)
 		if err != nil {
-			return fmt.Errorf("rewind code: %w", err)
+			return c.rewindFail(fmt.Errorf("rewind code: %w", err))
 		}
 		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo,
 			Text: fmt.Sprintf("rewound code to turn %d — %d file(s) restored, %d removed", turn, len(written), len(deleted))})
 	}
 	if scope == RewindConversation || scope == RewindBoth {
 		if !hasBound {
-			return fmt.Errorf("conversation rewind unavailable for turn %d (resumed session)", turn)
+			return c.rewindFail(fmt.Errorf("conversation rewind unavailable for turn %d (resumed session)", turn))
 		}
 		s := c.executor.Session()
 		if boundary <= len(s.Messages) {
@@ -667,20 +675,20 @@ func (c *Controller) Rewind(turn int, scope RewindScope) error {
 // while a turn runs. Returns the new session path.
 func (c *Controller) Fork(turn int) (string, error) {
 	if c.executor == nil {
-		return "", fmt.Errorf("checkpoints unavailable")
+		return "", c.rewindFail(fmt.Errorf("checkpoints unavailable"))
 	}
 	if c.sessionDir == "" {
-		return "", fmt.Errorf("fork needs session persistence, which is disabled")
+		return "", c.rewindFail(fmt.Errorf("fork needs session persistence, which is disabled"))
 	}
 	c.mu.Lock()
 	running := c.running
 	boundary, hasBound := c.cpBound[turn]
 	c.mu.Unlock()
 	if running {
-		return "", fmt.Errorf("cannot fork while a turn is running")
+		return "", c.rewindFail(fmt.Errorf("cannot fork while a turn is running"))
 	}
 	if !hasBound {
-		return "", fmt.Errorf("fork unavailable for turn %d (resumed session)", turn)
+		return "", c.rewindFail(fmt.Errorf("fork unavailable for turn %d (resumed session)", turn))
 	}
 
 	// Persist the current conversation first so the branch point survives, then
@@ -722,17 +730,17 @@ func (c *Controller) SummarizeUpTo(ctx context.Context, turn int) error {
 
 func (c *Controller) summarizeAt(ctx context.Context, turn int, from bool) error {
 	if c.executor == nil {
-		return fmt.Errorf("checkpoints unavailable")
+		return c.rewindFail(fmt.Errorf("checkpoints unavailable"))
 	}
 	c.mu.Lock()
 	running := c.running
 	boundary, hasBound := c.cpBound[turn]
 	c.mu.Unlock()
 	if running {
-		return fmt.Errorf("cannot summarize while a turn is running")
+		return c.rewindFail(fmt.Errorf("cannot summarize while a turn is running"))
 	}
 	if !hasBound {
-		return fmt.Errorf("summarize unavailable for turn %d (resumed session)", turn)
+		return c.rewindFail(fmt.Errorf("summarize unavailable for turn %d (resumed session)", turn))
 	}
 	var err error
 	if from {
@@ -741,7 +749,7 @@ func (c *Controller) summarizeAt(ctx context.Context, turn int, from bool) error
 		err = c.executor.SummarizeUpTo(ctx, boundary)
 	}
 	if err != nil {
-		return err
+		return c.rewindFail(err)
 	}
 	// The log was restructured; existing boundaries no longer map. Drop them (keep
 	// cpTurn monotonic so new turns don't collide with the store) — conversation
