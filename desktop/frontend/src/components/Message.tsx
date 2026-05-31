@@ -10,33 +10,29 @@ type AssistantItem = Extract<Item, { kind: "assistant" }>;
 export function UserMessage({
   text,
   turn,
+  open,
+  onToggle,
   onRewind,
 }: {
   text: string;
   turn?: number;
+  open?: boolean; // whether this message's rewind menu is the open one (lifted to Transcript)
+  onToggle?: () => void;
   onRewind?: (turn: number, scope: string) => void;
 }) {
   const t = useT();
-  const [menu, setMenu] = useState(false);
   const canRewind = onRewind != null && turn != null;
-  const rewind = (scope: string) => {
-    onRewind?.(turn as number, scope);
-    setMenu(false);
-  };
+  const rewind = (scope: string) => onRewind?.(turn as number, scope);
   return (
     <div className="msg msg--user">
       <span className="msg__caret">›</span>
       <div className="msg__text">{text}</div>
       {canRewind && (
         <div className="rewind">
-          <button
-            className="rewind__btn"
-            title={t("rewind.label")}
-            onClick={() => setMenu((v) => !v)}
-          >
+          <button className="rewind__btn" title={t("rewind.label")} onClick={onToggle}>
             ⟲
           </button>
-          {menu && (
+          {open && (
             <div className="rewind__menu">
               <button onClick={() => rewind("both")}>{t("rewind.both")}</button>
               <button onClick={() => rewind("conversation")}>{t("rewind.conversation")}</button>

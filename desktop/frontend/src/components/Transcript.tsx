@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Item } from "../lib/useController";
 import { AssistantMessage, UserMessage } from "./Message";
 import { ToolCard } from "./ToolCard";
@@ -49,6 +49,19 @@ export function Transcript({
     }
   }
 
+  // The rewind menu's open state is lifted here so at most one is open at a time;
+  // a mousedown outside any .rewind closes it.
+  const [openTurn, setOpenTurn] = useState<number | null>(null);
+  useEffect(() => {
+    if (openTurn === null) return;
+    const onDown = (e: MouseEvent) => {
+      const el = e.target as Element | null;
+      if (!el || !el.closest(".rewind")) setOpenTurn(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [openTurn]);
+
   // Each user message's turn = its ordinal among user messages, so a rewind
   // targets the matching checkpoint.
   const userTurn = new Map<string, number>();
@@ -63,15 +76,22 @@ export function Transcript({
 
       {items.map((it) => {
         switch (it.kind) {
-          case "user":
+          case "user": {
+            const tn = userTurn.get(it.id);
             return (
               <UserMessage
                 key={it.id}
                 text={it.text}
-                turn={userTurn.get(it.id)}
-                onRewind={onRewind}
+                turn={tn}
+                open={tn != null && openTurn === tn}
+                onToggle={() => setOpenTurn((cur) => (cur === tn ? null : (tn ?? null)))}
+                onRewind={(turn, scope) => {
+                  onRewind?.(turn, scope);
+                  setOpenTurn(null);
+                }}
               />
             );
+          }
           case "assistant":
             return <AssistantMessage key={it.id} item={it} />;
           case "tool":
