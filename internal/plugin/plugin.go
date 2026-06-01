@@ -14,6 +14,7 @@ import (
 	"io"
 	"log/slog"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -249,6 +250,13 @@ type Client struct {
 	// parallel startup can collect them per-client before merging into Host.
 	prompts   []Prompt
 	resources []Resource
+	tools     []ToolInfo
+}
+
+// ToolInfo is the human-facing metadata returned by MCP tools/list for one tool.
+type ToolInfo struct {
+	Name        string
+	Description string
 }
 
 // ServerStatus summarises one connected server for the /mcp command.
@@ -258,6 +266,7 @@ type ServerStatus struct {
 	Tools     int
 	Prompts   int
 	Resources int
+	ToolList  []ToolInfo
 }
 
 // Failure records one MCP server that was configured but could not connect.
@@ -273,7 +282,12 @@ func (h *Host) Servers() []ServerStatus {
 	defer h.mu.RUnlock()
 	out := make([]ServerStatus, 0, len(h.clients))
 	for _, c := range h.clients {
-		s := ServerStatus{Name: c.name, Transport: c.transport, Tools: c.toolCount}
+		s := ServerStatus{
+			Name:      c.name,
+			Transport: c.transport,
+			Tools:     c.toolCount,
+			ToolList:  append([]ToolInfo(nil), c.tools...),
+		}
 		for _, p := range h.prompts {
 			if p.Server == c.name {
 				s.Prompts++
@@ -531,8 +545,10 @@ func (c *Client) listTools(ctx context.Context) ([]tool.Tool, error) {
 		return nil, fmt.Errorf("plugin %q: decode tools/list: %w", c.name, err)
 	}
 
+	toolInfos := make([]ToolInfo, 0, len(out.Tools))
 	tools := make([]tool.Tool, 0, len(out.Tools))
 	for _, t := range out.Tools {
+		toolInfos = append(toolInfos, ToolInfo{Name: t.Name, Description: t.Description})
 		tools = append(tools, &remoteTool{
 			client:   c,
 			name:     toolName(c.name, t.Name),
@@ -542,6 +558,8 @@ func (c *Client) listTools(ctx context.Context) ([]tool.Tool, error) {
 			readOnly: t.Annotations != nil && t.Annotations.ReadOnlyHint,
 		})
 	}
+	sort.SliceStable(toolInfos, func(i, j int) bool { return toolInfos[i].Name < toolInfos[j].Name })
+	c.tools = toolInfos
 	return sortToolsByName(tools), nil
 }
 

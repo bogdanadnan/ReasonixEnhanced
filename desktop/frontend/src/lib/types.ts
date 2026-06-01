@@ -172,6 +172,11 @@ export interface ServerView {
   prompts: number;
   resources: number;
   error?: string;
+  toolList?: MCPToolView[];
+}
+export interface MCPToolView {
+  name: string;
+  description: string;
 }
 export interface SkillView {
   name: string;

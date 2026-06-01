@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/billing"
 	"reasonix/internal/checkpoint"
+	"reasonix/internal/codegraph"
 	"reasonix/internal/command"
 	"reasonix/internal/config"
 	"reasonix/internal/diff"
@@ -1157,11 +1159,8 @@ func (c *Controller) AddMCPServer(e config.PluginEntry) (int, error) {
 }
 
 func (c *Controller) connectMCPServer(e config.PluginEntry) (int, error) {
-	if c.host == nil {
-		c.host = plugin.NewHost()
-	}
 	exp := e.ExpandedPlugin()
-	tools, err := c.host.Add(c.pluginCtx, plugin.Spec{
+	return c.connectMCPSpec(plugin.Spec{
 		Name:    exp.Name,
 		Type:    exp.Type,
 		Command: exp.Command,
@@ -1170,6 +1169,13 @@ func (c *Controller) connectMCPServer(e config.PluginEntry) (int, error) {
 		URL:     exp.URL,
 		Headers: exp.Headers,
 	})
+}
+
+func (c *Controller) connectMCPSpec(s plugin.Spec) (int, error) {
+	if c.host == nil {
+		c.host = plugin.NewHost()
+	}
+	tools, err := c.host.Add(c.pluginCtx, s)
 	if err != nil {
 		return 0, err
 	}
@@ -1223,7 +1229,28 @@ func (c *Controller) ConnectConfiguredMCPServer(name string) (int, error) {
 			return c.connectMCPServer(p)
 		}
 	}
+	if name == "codegraph" {
+		return c.connectCodegraphMCPServer(cfg)
+	}
 	return 0, fmt.Errorf("no configured MCP server named %q", name)
+}
+
+func (c *Controller) connectCodegraphMCPServer(cfg *config.Config) (int, error) {
+	if !cfg.Codegraph.Enabled {
+		return 0, fmt.Errorf("codegraph is disabled in config")
+	}
+	bin, ok := codegraph.Resolve(cfg.Codegraph.Path)
+	if !ok {
+		return 0, fmt.Errorf("codegraph is not installed")
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return 0, err
+	}
+	if err := codegraph.EnsureInit(c.pluginCtx, bin, cwd); err != nil {
+		return 0, fmt.Errorf("codegraph init: %w", err)
+	}
+	return c.connectMCPSpec(plugin.Spec{Name: "codegraph", Command: bin, Args: []string{"serve", "--mcp"}, Dir: cwd})
 }
 
 // RemoveMCPServer disconnects a live MCP server — its tools vanish from the next

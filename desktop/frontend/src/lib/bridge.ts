@@ -239,7 +239,20 @@ function makeMockApp(): AppBindings {
   const t0 = Date.now();
   // Mutable so MCP add/remove/retry are observable in browser dev.
   let capServers: ServerView[] = [
-    { name: "codegraph", transport: "stdio", status: "connected", tools: 4, prompts: 0, resources: 1 },
+    {
+      name: "codegraph",
+      transport: "stdio",
+      status: "connected",
+      tools: 4,
+      prompts: 0,
+      resources: 1,
+      toolList: [
+        { name: "search", description: "Search symbols, files, and text in the workspace." },
+        { name: "context", description: "Fetch surrounding source context for a symbol or file." },
+        { name: "trace", description: "Follow callers and callees across the code graph." },
+        { name: "node", description: "Inspect a specific graph node." },
+      ],
+    },
     { name: "github", transport: "stdio", status: "connected", tools: 12, prompts: 2, resources: 0 },
     { name: "linear", transport: "http", status: "connected", tools: 8, prompts: 0, resources: 0 },
     { name: "figma", transport: "http", status: "failed", tools: 0, prompts: 0, resources: 0, error: "connect: 401 unauthorized" },
@@ -414,7 +427,18 @@ function makeMockApp(): AppBindings {
     },
     async AddMCPServer(input: MCPServerInput) {
       const tools = input.transport === "stdio" ? 3 : 5;
-      capServers.push({ name: input.name, transport: input.transport, status: "connected", tools, prompts: 0, resources: 0 });
+      capServers.push({
+        name: input.name,
+        transport: input.transport,
+        status: "connected",
+        tools,
+        prompts: 0,
+        resources: 0,
+        toolList: Array.from({ length: tools }, (_, i) => ({
+          name: `${input.name}_tool_${i + 1}`,
+          description: `Mock tool ${i + 1} exposed by ${input.name}.`,
+        })),
+      });
       return tools;
     },
     async RemoveMCPServer(name: string) {

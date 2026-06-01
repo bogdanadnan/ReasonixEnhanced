@@ -25,6 +25,7 @@ export function CapabilitiesPanel({
   const [skillQuery, setSkillQuery] = useState("");
   const [expandedSkills, setExpandedSkills] = useState<Set<string>>(() => new Set());
   const [expandedErrors, setExpandedErrors] = useState<Set<string>>(() => new Set());
+  const [expandedServers, setExpandedServers] = useState<Set<string>>(() => new Set());
 
   const reload = async () =>
     setView(await app.Capabilities().catch(() => ({ servers: [], skills: [] })));
@@ -72,8 +73,7 @@ export function CapabilitiesPanel({
     const servers = view?.servers ?? [];
     return {
       failed: servers.filter((s) => s.status === "failed"),
-      connected: servers.filter((s) => s.status === "connected"),
-      disabled: servers.filter((s) => s.status === "disabled"),
+      active: servers.filter((s) => s.status !== "failed"),
     };
   }, [view]);
 
@@ -88,6 +88,15 @@ export function CapabilitiesPanel({
 
   const toggleError = useCallback((name: string) => {
     setExpandedErrors((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }, []);
+
+  const toggleServer = useCallback((name: string) => {
+    setExpandedServers((prev) => {
       const next = new Set(prev);
       if (next.has(name)) next.delete(name);
       else next.add(name);
@@ -134,6 +143,13 @@ export function CapabilitiesPanel({
 
             {tab === "servers" ? (
               <section className="mem-section">
+                <div className="mem-section__actions">
+                  {!adding && (
+                    <button className="btn btn--small" disabled={busy} onClick={() => setAdding(true)}>
+                      {t("caps.addServer")}
+                    </button>
+                  )}
+                </div>
                 {serverGroups.failed.length > 0 && (
                   <FailedServersNotice
                     servers={serverGroups.failed}
@@ -151,34 +167,20 @@ export function CapabilitiesPanel({
                   <div className="mem-empty">{t("caps.noServers")}</div>
                 )}
                 <ServerGroup
-                  title={t("caps.connectedGroup")}
-                  servers={serverGroups.connected}
                   busy={busy}
+                  servers={serverGroups.active}
+                  expanded={expandedServers}
                   confirming={confirming}
                   onConfirm={setConfirming}
                   onCancelConfirm={() => setConfirming(null)}
                   onRemove={(name) => mutate(() => app.RemoveMCPServer(name)).then(() => setConfirming(null))}
                   onRetry={(name) => void mutate(() => app.RetryMCPServer(name))}
                   onToggle={(name, on) => void mutate(() => app.SetMCPServerEnabled(name, on))}
-                />
-                <ServerGroup
-                  title={t("caps.disabledGroup")}
-                  servers={serverGroups.disabled}
-                  busy={busy}
-                  confirming={confirming}
-                  onConfirm={setConfirming}
-                  onCancelConfirm={() => setConfirming(null)}
-                  onRemove={(name) => mutate(() => app.RemoveMCPServer(name)).then(() => setConfirming(null))}
-                  onRetry={(name) => void mutate(() => app.RetryMCPServer(name))}
-                  onToggle={(name, on) => void mutate(() => app.SetMCPServerEnabled(name, on))}
+                  onToggleDetails={toggleServer}
                 />
                 {adding ? (
                   <AddServerForm busy={busy} onCancel={() => setAdding(false)} onAdd={async (input) => (await mutate(() => app.AddMCPServer(input))) && setAdding(false)} />
-                ) : (
-                  <button className="btn btn--small" disabled={busy} onClick={() => setAdding(true)}>
-                    {t("caps.addServer")}
-                  </button>
-                )}
+                ) : null}
               </section>
             ) : (
               <section className="mem-section">
@@ -216,8 +218,8 @@ export function CapabilitiesPanel({
 }
 
 function ServerGroup({
-  title,
   servers,
+  expanded,
   busy,
   confirming,
   onConfirm,
@@ -225,9 +227,10 @@ function ServerGroup({
   onRemove,
   onRetry,
   onToggle,
+  onToggleDetails,
 }: {
-  title: string;
   servers: ServerView[];
+  expanded: Set<string>;
   busy: boolean;
   confirming: string | null;
   onConfirm: (name: string) => void;
@@ -235,18 +238,16 @@ function ServerGroup({
   onRemove: (name: string) => void;
   onRetry: (name: string) => void;
   onToggle: (name: string, on: boolean) => void;
+  onToggleDetails: (name: string) => void;
 }) {
   if (servers.length === 0) return null;
   return (
     <div className="cap-server-group">
-      <div className="cap-server-group__title">
-        <span>{title}</span>
-        <span>{servers.length}</span>
-      </div>
       {servers.map((s) => (
         <ServerRow
           key={s.name}
           s={s}
+          expanded={expanded.has(s.name)}
           busy={busy}
           confirming={confirming === s.name}
           onConfirm={() => onConfirm(s.name)}
@@ -254,6 +255,7 @@ function ServerGroup({
           onRemove={() => onRemove(s.name)}
           onRetry={() => onRetry(s.name)}
           onToggle={(on) => onToggle(s.name, on)}
+          onToggleDetails={() => onToggleDetails(s.name)}
         />
       ))}
     </div>
@@ -341,6 +343,7 @@ function FailedServersNotice({
 
 function ServerRow({
   s,
+  expanded,
   busy,
   confirming,
   onConfirm,
@@ -348,8 +351,10 @@ function ServerRow({
   onRemove,
   onRetry,
   onToggle,
+  onToggleDetails,
 }: {
   s: ServerView;
+  expanded: boolean;
   busy: boolean;
   confirming: boolean;
   onConfirm: () => void;
@@ -357,9 +362,12 @@ function ServerRow({
   onRemove: () => void;
   onRetry: () => void;
   onToggle: (on: boolean) => void;
+  onToggleDetails: () => void;
 }) {
   const t = useT();
   const actionLabel = serverActionLabel(s, t);
+  const tools = s.toolList ?? [];
+  const hasTools = tools.length > 0;
   const sub =
     s.status === "failed"
       ? s.error || t("caps.failed")
@@ -367,48 +375,70 @@ function ServerRow({
         ? t("caps.disabled")
         : t("caps.counts", { tools: s.tools, prompts: s.prompts, resources: s.resources });
   return (
-    <div className="cap-row" title={s.error || undefined}>
-      <span className={`cap-dot cap-dot--${s.status}`} />
-      <div className="cap-row__text">
-        <div className="cap-row__head">
-          <span className="cap-row__name">{s.name}</span>
-          <span className="cap-row__transport">{s.transport}</span>
+    <div className={`cap-server-entry${s.status === "disabled" ? " cap-server-entry--disabled" : ""}`}>
+      <div className={`cap-row${s.status === "disabled" ? " cap-row--disabled" : ""}`} title={s.error || undefined}>
+        <button
+          className="cap-disclosure"
+          disabled={!hasTools}
+          aria-expanded={hasTools ? expanded : undefined}
+          onClick={onToggleDetails}
+          title={hasTools ? (expanded ? t("caps.collapseTools") : t("caps.expandTools")) : t("caps.noToolDetails")}
+        >
+          {hasTools ? (expanded ? "⌄" : "›") : ""}
+        </button>
+        <span className={`cap-dot cap-dot--${s.status}`} />
+        <div className="cap-row__text">
+          <div className="cap-row__head">
+            <span className="cap-row__name">{s.name}</span>
+            <span className="cap-row__transport">{s.transport}</span>
+          </div>
+          <div className="cap-row__sub">{sub}</div>
         </div>
-        <div className="cap-row__sub">{sub}</div>
-      </div>
-      <div className="cap-row__actions">
-        {confirming ? (
-          <>
-            <button className="btn btn--small" disabled={busy} onClick={onRemove}>
-              {t("caps.confirmRemove")}
-            </button>
-            <button className="btn btn--small" disabled={busy} onClick={onCancelConfirm}>
-              {t("common.cancel")}
-            </button>
-          </>
-        ) : (
-          <>
-            {s.status === "failed" ? (
-              <button className="btn btn--small" disabled={busy} onClick={onRetry}>
-                {actionLabel}
+        <div className="cap-row__actions">
+          {confirming ? (
+            <>
+              <button className="btn btn--small" disabled={busy} onClick={onRemove}>
+                {t("caps.confirmRemove")}
               </button>
-            ) : (
-              <label className="cap-switch" title={s.status === "connected" ? t("caps.disable") : t("caps.enable")}>
-                <input
-                  type="checkbox"
-                  checked={s.status === "connected"}
-                  disabled={busy}
-                  onChange={(e) => onToggle(e.target.checked)}
-                />
-                <span className="cap-switch__track" />
-              </label>
-            )}
-            <button className="btn btn--small" disabled={busy} onClick={onConfirm} title={t("caps.remove")}>
-              ✕
-            </button>
-          </>
-        )}
+              <button className="btn btn--small" disabled={busy} onClick={onCancelConfirm}>
+                {t("common.cancel")}
+              </button>
+            </>
+          ) : (
+            <>
+              {s.status === "failed" ? (
+                <button className="btn btn--small" disabled={busy} onClick={onRetry}>
+                  {actionLabel}
+                </button>
+              ) : (
+                <label className="cap-switch" title={s.status === "connected" ? t("caps.disable") : t("caps.enable")}>
+                  <input
+                    type="checkbox"
+                    checked={s.status === "connected"}
+                    disabled={busy}
+                    onChange={(e) => onToggle(e.target.checked)}
+                  />
+                  <span className="cap-switch__track" />
+                </label>
+              )}
+              <button className="btn btn--small" disabled={busy} onClick={onConfirm} title={t("caps.remove")}>
+                ✕
+              </button>
+            </>
+          )}
+        </div>
       </div>
+      {hasTools && expanded && (
+        <div className="cap-tool-list">
+          <div className="cap-tool-list__title">{t("caps.tools")}</div>
+          {tools.map((tool) => (
+            <div className="cap-tool" key={tool.name}>
+              <div className="cap-tool__name">{tool.name}</div>
+              {tool.description && <div className="cap-tool__desc">{tool.description}</div>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -464,8 +494,8 @@ function SkillRow({
         <span className="cap-skill-card__main">
           <span className="cap-skill-card__command">{skill.name}</span>
           <span className="cap-skill-card__badges">
-            <span className={`badge badge--${skill.scope}`}>{skill.scope}</span>
-            {skill.runAs === "subagent" && <span className="badge">{t("caps.subagent")}</span>}
+            <span className={`cap-skill-badge cap-skill-badge--${skill.scope}`}>{skillScopeLabel(skill.scope, t)}</span>
+            {skill.runAs === "subagent" && <span className="cap-skill-badge cap-skill-badge--run">{t("caps.subagent")}</span>}
           </span>
         </span>
       </div>
@@ -473,6 +503,21 @@ function SkillRow({
       {canExpand && <div className="cap-skill-card__more">{expanded ? t("common.collapse") : t("common.expand")}</div>}
     </button>
   );
+}
+
+function skillScopeLabel(scope: string, t: ReturnType<typeof useT>): string {
+  switch (scope) {
+    case "builtin":
+      return t("caps.skillScopeBuiltin");
+    case "project":
+      return t("caps.skillScopeProject");
+    case "custom":
+      return t("caps.skillScopeCustom");
+    case "global":
+      return t("caps.skillScopeGlobal");
+    default:
+      return scope;
+  }
 }
 
 function summarizeSkillDescription(description: string): string {
