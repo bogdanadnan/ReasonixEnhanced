@@ -215,7 +215,7 @@ function ShellHotkeys() {
   const shellExpand = useShellExpand();
   useEffect(() => {
     if (!shellExpand) return;
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "b") {
         e.preventDefault();
         shellExpand.toggleLast();

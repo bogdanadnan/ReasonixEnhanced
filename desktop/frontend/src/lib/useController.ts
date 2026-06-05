@@ -428,9 +428,10 @@ export function useController() {
   }, [activeTabId, dispatchTo]);
 
   const runShell = useCallback((command: string) => {
-    dispatch({ type: "user", text: `!${command}` });
+    if (!activeTabId) return;
+    dispatchTo(activeTabId, { type: "user", text: `!${command}` });
     app.RunShell(command).catch(() => {});
-  }, []);
+  }, [activeTabId, dispatchTo]);
 
   const notice = useCallback((text: string, level: "info" | "warn" = "info") => {
     if (!activeTabId) return;
