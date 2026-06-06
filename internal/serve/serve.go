@@ -305,6 +305,18 @@ func i18nTranslations() map[string]map[string]string {
 			"yolo":       "YOLO",
 			"approval_title": "Approval Required",
 			"delete_confirm": "Delete this session?",
+			"cancel":     "Cancel (Esc)",
+			"example_explain": "Explain the project structure",
+			"example_fix": "Find and fix any bugs",
+			"example_test": "Write tests for the main module",
+			"hint_commands": "/ commands",
+			"hint_mode": "Shift+Tab mode",
+			"hint_rewind": "Esc×2 rewind",
+			"placeholder": "Message Reasonix...  / for commands",
+			"plan_mode":  "Plan mode (read-only)",
+			"send":       "Send (Enter)",
+			"welcome_tag": "AI coding agent",
+			"yolo_mode":  "YOLO mode (auto-approve)",
 		},
 		"zh": {
 			"new_session": "新会话",
@@ -326,11 +338,24 @@ func i18nTranslations() map[string]map[string]string {
 			"cache_hit_rate": "缓存命中率",
 			"total_cost":  "总费用",
 			"context_usage": "上下文用量",
+			"auto_mode":  "自动模式",
 			"auto":       "自动",
 			"plan":       "计划",
 			"yolo":       "YOLO",
 			"approval_title": "需要批准",
 			"delete_confirm": "删除此会话？",
+			"cancel":     "取消 (Esc)",
+			"example_explain": "解释项目结构",
+			"example_fix": "查找并修复错误",
+			"example_test": "为主模块编写测试",
+			"hint_commands": "/ 命令",
+			"hint_mode": "Shift+Tab 模式",
+			"hint_rewind": "Esc×2 回退",
+			"placeholder": "给 Reasonix 发消息...  / 查看命令",
+			"plan_mode":  "计划模式（只读）",
+			"send":       "发送 (Enter)",
+			"welcome_tag": "AI 编码助手",
+			"yolo_mode":  "YOLO 模式（自动批准）",
 		},
 	}
 }
@@ -345,13 +370,41 @@ func (s *Server) index(w http.ResponseWriter, _ *http.Request) {
 	}
 	html := string(indexHTML)
 	html = strings.ReplaceAll(html, "__LANG__", lang)
-	// Server-side i18n: replace __('key') in static HTML text nodes.
-	// JS __() handles dynamic content; this handles the initial render.
+	// Server-side i18n: replace __('key') in static HTML text nodes ONLY.
+	// JS __() handles dynamic content; must NOT touch <script> content
+	// to avoid breaking JavaScript syntax (e.g. __('thinking') → 思考中... without quotes).
 	i18nMap := i18nTranslations()
 	if trans, ok := i18nMap[lang]; ok {
-		for key, val := range trans {
-			html = strings.ReplaceAll(html, "__('"+key+"')", val)
+		// Split on <script, replace only in non-script segments
+		var buf strings.Builder
+		for {
+			idx := strings.Index(html, "<script")
+			if idx < 0 {
+				// No more script tags, replace in remaining content
+				s := html
+				for key, val := range trans {
+					s = strings.ReplaceAll(s, "__('"+key+"')", val)
+				}
+				buf.WriteString(s)
+				break
+			}
+			// Replace in content before <script
+			s := html[:idx]
+			for key, val := range trans {
+				s = strings.ReplaceAll(s, "__('"+key+"')", val)
+			}
+			buf.WriteString(s)
+			// Find </script> and keep script content verbatim
+			closing := strings.Index(html[idx:], "</script>")
+			if closing < 0 {
+				buf.WriteString(html[idx:])
+				break
+			}
+			closing += idx + len("</script>")
+			buf.WriteString(html[idx:closing])
+			html = html[closing:]
 		}
+		html = buf.String()
 	}
 	_, _ = w.Write([]byte(html))
 }
