@@ -38,7 +38,9 @@ export function normalizeMath(s: string): string {
   const protectedCode = protectMarkdownCode(s);
   let r = normalizeMathText(protectedCode.text);
   for (let i = 0; i < protectedCode.segments.length; i += 1) {
-    r = r.split(`${protectedCode.prefix}${i}__`).join(protectedCode.segments[i]);
+    // Unescape &#36; back to $ when restoring the protected code segment
+    const restored = protectedCode.segments[i].replace(/&#36;/g, "$");
+    r = r.split(`${protectedCode.prefix}${i}__`).join(restored);
   }
   return r;
 }
@@ -58,6 +60,26 @@ function normalizeMathText(s: string): string {
     .replace(/\\\)/g, () => "$");
   r = r.replace(new RegExp(LB, "g"), "\\\\[");
 
+  // Step 2.5: repair inline $$. LLM output frequently puts $$
+  // immediately after prose ("...decomposes as$$<newline>\mathbf{...}").
+  // CommonMark requires a blank line before block math; without it
+  // remark-math parses the opening $$ as an empty math node and the
+  // formula leaks out as literal text. Force a blank line before any $$
+  // preceded by a letter or end-of-sentence punctuation (i.e. real
+  // prose). Digits are deliberately excluded so `c^2$$` in a formula
+  // stays put, and the freshly-rewritten \] closing delimiter (which
+  // step 2 already turned into $$) isn't doubled.
+  r = r.replace(/([A-Za-z\)\]\>\.。！？])\$\$/g, (_m, prev) => prev + "\n\n$$");
+
+  // Orphan opening $$ (model wrote display math but forgot the closing
+  // $$) is left alone: remark-math will swallow everything until the
+  // next $$ into one bad math block. Converting the orphan $$ to a
+  // lone $ would conflict with Step 5's non-greedy $/…$/ matcher and
+  // wrap whole prose paragraphs in &#36;…&#36;. Rescuing this case from
+  // the renderer is not feasible without making things worse; the right
+  // fix is upstream — a post-generation lint step or a stricter LLM
+  // system prompt that requires closing every display-math block.
+
   // Step 3: $$…$$ → display placeholders. The KaTeX-specific normalisation
   // runs here so |→\vert (with \| protected) and \text{} escapes both apply
   // to display math.
@@ -73,10 +95,13 @@ function normalizeMathText(s: string): string {
   });
 
   // Step 5: remaining $…$ → classifier-gated inline math. Non-math pairs
-  // use Markdown dollar entities so remark-math leaves them as literal text
-  // instead of raising on bare currency / env-var / version tokens.
-  r = r.replace(/\$([^$\n]+)\$/g, (_m, m) => {
-    if (!isLikelyInlineMath(m.trim())) return `${DOLLAR}${m}${DOLLAR}`;
+  // (e.g., currency like "$5 and $6") are left unchanged so the dollars
+  // remain visible. remark-math will not try to parse them as math since
+  // they're not valid math expressions.
+  // Use non-greedy matching so '$5 and $6' doesn't match '$5 and $' as a
+  // single pair.
+  r = r.replace(/\$([^$\n]+?)\$/g, (_m, m) => {
+    if (!isLikelyInlineMath(m.trim())) return _m; // Leave non-math pairs unchanged
     return `${IM}${latexNormalizeForKatex(m)}${IM}`;
   });
 
@@ -93,8 +118,11 @@ function protectMarkdownCode(s: string): { text: string; prefix: string; segment
   let i = 0;
 
   const pushSegment = (segment: string) => {
+    // Escape $ inside protected code to prevent downstream interpretation as
+    // math delimiters. The restoration step unescapes &#36; back to $.
+    const safeSegment = segment.replace(/\$/g, "&#36;");
     const token = `${prefix}${segments.length}__`;
-    segments.push(segment);
+    segments.push(safeSegment);
     out += token;
   };
 
@@ -133,8 +161,8 @@ function unusedPlaceholderPrefix(s: string): string {
 }
 
 function fencedCodeEnd(s: string, start: number): number {
-  if (start !== 0 && s[start - 1] !== "\n") return -1;
-
+  // Allow ``` markers anywhere (not just after newlines) to handle malformed
+  // code blocks that are all on one line (e.g., pasted documentation)
   let markerStart = start;
   let spaces = 0;
   while (spaces < 4 && s[markerStart] === " ") {
@@ -150,8 +178,17 @@ function fencedCodeEnd(s: string, start: number): number {
   if (fenceLen < 3) return -1;
 
   const openingLineEnd = lineEnd(s, markerStart + fenceLen);
-  if (openingLineEnd >= s.length) return s.length;
+  
+  // If everything is on one line (no newline), search for next matching fence
+  // Treat ``` as a simple toggle: first is opening, second is closing
+  if (openingLineEnd >= s.length) {
+    const fencePattern = marker.repeat(fenceLen);
+    const nextFence = s.indexOf(fencePattern, markerStart + fenceLen);
+    if (nextFence === -1) return s.length;
+    return nextFence + fenceLen;
+  }
 
+  // Multi-line case: scan line by line for closing fence
   let lineStart = openingLineEnd + 1;
   while (lineStart < s.length) {
     const currentLineEnd = lineEnd(s, lineStart);
