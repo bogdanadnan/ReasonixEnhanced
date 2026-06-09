@@ -38,7 +38,9 @@ export function normalizeMath(s: string): string {
   const protectedCode = protectMarkdownCode(s);
   let r = normalizeMathText(protectedCode.text);
   for (let i = 0; i < protectedCode.segments.length; i += 1) {
-    r = r.split(`${protectedCode.prefix}${i}__`).join(protectedCode.segments[i]);
+    // Unescape &#36; back to $ when restoring the protected code segment
+    const restored = protectedCode.segments[i].replace(/&#36;/g, "$");
+    r = r.split(`${protectedCode.prefix}${i}__`).join(restored);
   }
   return r;
 }
@@ -113,8 +115,11 @@ function protectMarkdownCode(s: string): { text: string; prefix: string; segment
   let i = 0;
 
   const pushSegment = (segment: string) => {
+    // Escape $ inside protected code to prevent downstream interpretation as
+    // math delimiters. The restoration step unescapes &#36; back to $.
+    const safeSegment = segment.replace(/\$/g, "&#36;");
     const token = `${prefix}${segments.length}__`;
-    segments.push(segment);
+    segments.push(safeSegment);
     out += token;
   };
 
