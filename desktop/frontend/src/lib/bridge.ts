@@ -92,6 +92,8 @@ export interface AppBindings {
   SubmitDisplayToTab(tabID: string, display: string, input: string): Promise<void>;
   RunShell(command: string): Promise<void>;
   RunShellForTab(tabID: string, command: string): Promise<void>;
+  Steer(text: string): Promise<void>;
+  SteerForTab(tabID: string, text: string): Promise<void>;
   Cancel(): Promise<void>;
   CancelTab(tabID: string): Promise<void>;
   Approve(id: string, allow: boolean, session: boolean, persist: boolean): Promise<void>;
@@ -1209,6 +1211,13 @@ function makeMockApp(): AppBindings {
         },
         async RunShellForTab(_tabID, command) {
           await withMockTabScope(_tabID, () => this.RunShell(command));
+        },
+        async Steer(_text) {
+          // Mock: emit a steer event as confirmation in the transcript.
+          emit({ kind: "steer", text: _text });
+        },
+        async SteerForTab(_tabID, _text) {
+          await this.Steer(_text);
         },
         async Cancel() {
           cancelled = true;

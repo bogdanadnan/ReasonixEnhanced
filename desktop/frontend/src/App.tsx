@@ -379,6 +379,7 @@ export default function App() {
     activeTabId,
     send,
     runShell,
+    steer,
     notice,
     cancel,
     approve,
@@ -591,6 +592,7 @@ export default function App() {
   const [footerHeight, setFooterHeight] = useState(0);
   const footerHeightRef = useRef(0);
   const footerRef = useRef<HTMLElement>(null);
+  const runningRef = useRef(state.running);
   const rightDockDetailActive = rightDockMode === "context" ? contextDetailActive : workspacePreviewActive;
   const preferredWorkspacePanelWidth = rightDockDetailActive ? rightDockPreviewWidth : rightDockTreeWidth;
   const workspacePanelMinWidth = rightDockDetailActive ? RIGHT_DOCK_PREVIEW_MIN_WIDTH : RIGHT_DOCK_TREE_MIN_WIDTH;
@@ -1013,6 +1015,12 @@ export default function App() {
     }
   }, [clearSession, notice, t]);
 
+  // Keep runningRef in sync so handleSend sees the latest running value
+  // even inside a stale closure.
+  useEffect(() => {
+    runningRef.current = state.running;
+  }, [state.running]);
+
   // handleSend intercepts slash commands that need a desktop-native action before
   // they reach the backend: "/model <ref>" rebuilds on that model, "/memory"
   // opens Settings, and "/clear" shows an in-app confirmation card. Everything else — skills (/init, …),
@@ -1088,12 +1096,13 @@ export default function App() {
         notice(t("settings.themeUnknown", { name: arg }), "warn");
         return;
       }
+      if (runningRef.current) { steer(submitText.trim()); return; }
       await setControllerCollaborationMode(collaborationMode);
       await setControllerToolApprovalMode(toolApprovalMode);
       if (goal.trim()) await setControllerGoal(goal);
       send(trimmed, submitText.trim());
     },
-    [applyGoal, closeTransientOverlays, collaborationMode, goal, send, runShell, notice, setControllerCollaborationMode, setControllerGoal, setControllerToolApprovalMode, switchModel, t, toolApprovalMode],
+    [applyGoal, closeTransientOverlays, collaborationMode, goal, send, runShell, notice, setControllerCollaborationMode, setControllerGoal, setControllerToolApprovalMode, steer, switchModel, t, toolApprovalMode],
   );
 
   const refreshTabMetas = useCallback(async (): Promise<TabMeta[]> => {

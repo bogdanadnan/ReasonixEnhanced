@@ -1127,6 +1127,35 @@ func (c *Controller) refreshInteractiveGate() {
 	}
 }
 
+// Steer queues mid-turn guidance without interrupting the in-flight request.
+func (c *Controller) Steer(text string) {
+	c.mu.Lock()
+	exec := c.executor
+	running := c.running
+	c.mu.Unlock()
+	if exec == nil {
+		return
+	}
+	if running {
+		exec.Steer(text)
+		return
+	}
+	// Agent not running — frontend's runningRef was stale.
+	// Convert to a new turn so the user gets a response.
+	go func() { c.SubmitDisplay(text, text) }()
+}
+
+// SteerConsumed returns true when the steer queue is empty after the last consume.
+func (c *Controller) SteerConsumed() bool {
+	c.mu.Lock()
+	exec := c.executor
+	c.mu.Unlock()
+	if exec != nil {
+		return exec.SteerConsumed()
+	}
+	return true
+}
+
 // Ask implements agent.Asker: it emits an AskRequest and blocks until
 // AnswerQuestion(ID, …) answers or ctx is cancelled. promptMu serialises it
 // against tool-approval prompts so at most one user prompt is outstanding.
