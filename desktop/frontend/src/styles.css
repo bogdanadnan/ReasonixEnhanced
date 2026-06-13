@@ -2726,7 +2726,7 @@ a[href] {
 .readonly-batch--open .readonly-batch__body,
 .turn-collapse--open .turn-collapse__body,
 .tool--open .tool__body {
-  padding: 0 11px 10px 30px;
+  padding: 0 11px 10px 12px;
   margin-top: 6px;
 }
 
