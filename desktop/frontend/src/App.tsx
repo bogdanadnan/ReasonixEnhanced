@@ -1848,10 +1848,10 @@ export default function App() {
 
   const handleTabChange = useCallback(async (id: string) => {
     closeTransientOverlays();
-    await switchTab(id);
-    await refreshTabMetas();
+    const tabs = await switchTab(id);
+    if (tabs) setTabMetas(tabs);
     setTabRevealSignal((signal) => signal + 1);
-  }, [closeTransientOverlays, refreshTabMetas, switchTab]);
+  }, [closeTransientOverlays, setTabMetas, switchTab]);
 
   const handleTabClose = useCallback(async (id: string) => {
     closeTransientOverlays();

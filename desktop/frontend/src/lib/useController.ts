@@ -683,17 +683,17 @@ export function useController() {
     return active.id;
   }, [activeTabFromBackend, loadSessionDataForTab]);
 
-  const reconcileTabRuntime = useCallback(async (tabId: string) => {
+  const reconcileTabRuntime = useCallback(async (tabId: string): Promise<TabMeta[] | undefined> => {
     const tabs = asArray(await app.ListTabs().catch(() => [] as TabMeta[]));
     const tab = tabs.find((candidate) => candidate.id === tabId);
-    if (!tab) return;
+    if (!tab) return undefined;
     const local = statesRef.current.get(tabId);
     const needsInitialLoad = !local?.meta;
     const missedTurnDone = Boolean(local?.running && !tab.running);
     dispatchTo(tabId, { type: "backend_status", running: Boolean(tab.running) });
     if (needsInitialLoad || missedTurnDone) {
       await loadSessionDataForTab(tabId, missedTurnDone);
-      return;
+      return tabs;
     }
     const [jobs, effort, balance] = await Promise.all([
       app.JobsForTab(tabId).catch(() => undefined),
@@ -703,6 +703,7 @@ export function useController() {
     if (jobs) dispatchTo(tabId, { type: "jobs", jobs: asArray(jobs) });
     if (effort) dispatchTo(tabId, { type: "effort", effort });
     if (balance) dispatchTo(tabId, { type: "balance", balance });
+    return tabs;
   }, [dispatchTo, loadSessionDataForTab]);
 
   useEffect(() => {
@@ -1048,13 +1049,14 @@ export function useController() {
   }, [activeTabId, dispatchTo, loadSessionDataForTab, syncActiveTabFromBackend, waitForTabReady]);
 
   // Tab management: switch preserves per-tab state; open creates it.
-  const switchTab = useCallback(async (tabId: string) => {
+  const switchTab = useCallback(async (tabId: string): Promise<TabMeta[] | undefined> => {
     addBreadcrumb("nav", `switch tab ${tabId}`);
     setActiveTabId(tabId);
     try {
       await app.SetActiveTab(tabId);
-      await reconcileTabRuntime(tabId);
+      return await reconcileTabRuntime(tabId);
     } catch { /* ignore */ }
+    return undefined;
   }, [reconcileTabRuntime]);
 
   const openProjectTab = useCallback(async (workspaceRoot: string, topicId: string): Promise<TabMeta> => {

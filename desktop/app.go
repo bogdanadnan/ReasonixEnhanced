@@ -71,6 +71,11 @@ type App struct {
 	activeTabID string
 	readyHook   func()
 
+	// tabsSaveMu serializes writes to desktop-tabs.json and its fixed .tmp path.
+	tabsSaveMu             sync.Mutex
+	tabsSaveVersion        uint64 // protected by mu; assigned when collecting a snapshot
+	tabsLastWrittenVersion uint64 // protected by tabsSaveMu
+
 	forceQuit           atomic.Bool
 	backgroundMaximised atomic.Bool
 	trayReady           bool
