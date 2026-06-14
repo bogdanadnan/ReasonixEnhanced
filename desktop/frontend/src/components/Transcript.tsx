@@ -23,7 +23,17 @@ type QuestionAnchor = { id: string; text: string; turn: number };
 const QUESTION_NAV_MIN_COUNT = 2;
 const LiveStreamContext = createContext<LiveStream | undefined>(undefined);
 
-const LiveAssistantMessage = memo(function LiveAssistantMessage({ item, defaultExpanded = false }: { item: AssistantItem; defaultExpanded?: boolean }) {
+const LiveAssistantMessage = memo(function LiveAssistantMessage({
+  item,
+  defaultExpanded = false,
+  expandWhileStreaming = true,
+  truncateStreamingReasoning = false,
+}: {
+  item: AssistantItem;
+  defaultExpanded?: boolean;
+  expandWhileStreaming?: boolean;
+  truncateStreamingReasoning?: boolean;
+}) {
   const live = useContext(LiveStreamContext);
   const shown = useMemo(
     () =>
@@ -32,7 +42,14 @@ const LiveAssistantMessage = memo(function LiveAssistantMessage({ item, defaultE
         : item,
     [item, live?.id, live?.text, live?.reasoning, live?.reasoningComplete],
   );
-  return <AssistantMessage item={shown} defaultExpanded={defaultExpanded} />;
+  return (
+    <AssistantMessage
+      item={shown}
+      defaultExpanded={defaultExpanded}
+      expandWhileStreaming={expandWhileStreaming}
+      truncateStreamingReasoning={truncateStreamingReasoning}
+    />
+  );
 });
 
 // ── Layer budgets ─────────────────────────────────────────────────────────────
@@ -173,6 +190,7 @@ export function Transcript({
     lastClientHeight,
     lastFooterHeight,
   } = useScrollManager();
+  const autoScrollFrame = useRef<number | null>(null);
   const sessionKey = useMemo(() => `${items[0]?.id ?? ""}|${items[items.length - 1]?.id ?? ""}`, [items]);
   const entranceRef = useEntranceAnimation<HTMLDivElement>(sessionKey, items.length);
 
@@ -194,16 +212,27 @@ export function Transcript({
   // Track question count and auto-scroll on new messages.
   useEffect(() => { trackQuestions(questions.length); }, [questions.length, trackQuestions]);
 
-  // Auto-scroll to bottom during streaming — instant, no GSAP tween.
-  // A 120ms tween during fast streaming is perpetually killed/restarted
-  // before reaching the target, causing visible jitter.  Direct scrollTop
-  // assignment is synchronous and always hits the exact bottom.
+  // Auto-scroll to bottom during streaming. Coalesce fast token/reasoning
+  // updates into one layout read/write per animation frame.
   const contentVersion = useMemo(() => scrollVersion(items), [items]);
   useEffect(() => {
     if (!stick.current) return;
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (autoScrollFrame.current !== null) return;
+    autoScrollFrame.current = requestAnimationFrame(() => {
+      autoScrollFrame.current = null;
+      if (!stick.current) return;
+      const el = scrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
   }, [contentVersion, live?.text?.length ?? 0, live?.reasoning?.length ?? 0]);
+  useEffect(() => {
+    return () => {
+      if (autoScrollFrame.current !== null) {
+        cancelAnimationFrame(autoScrollFrame.current);
+        autoScrollFrame.current = null;
+      }
+    };
+  }, []);
 
   // ResizeObserver for container height changes.
   useEffect(() => {
@@ -467,7 +496,15 @@ export function Transcript({
         // Render the final assistant message (if any) directly
         for (const it of group.items) {
           if (it.kind !== "assistant") continue;
-          out.push(<LiveAssistantMessage key={it.id} item={it as AssistantItem} defaultExpanded={false} />);
+          out.push(
+            <LiveAssistantMessage
+              key={it.id}
+              item={it as AssistantItem}
+              defaultExpanded={false}
+              expandWhileStreaming={false}
+              truncateStreamingReasoning={true}
+            />,
+          );
           if (!it.streaming && it.text.trim() !== "") {
             actionText = it.text;
             actionReady = true;
