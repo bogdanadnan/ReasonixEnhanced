@@ -17183,6 +17183,10 @@ a[href] {
   grid-column: 1 / -1;
 }
 
+.context-panel__metric--wide {
+  grid-column: 1 / -1;
+}
+
 .context-panel__metric {
   min-height: 54px;
   min-width: 0;
