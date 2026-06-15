@@ -15187,7 +15187,7 @@ a[href] {
 .app--linux .app-chrome--native-tabs {
   align-items: center;
   gap: 12px;
-  padding: 0 calc(var(--chrome-toggle-size) + 10px) 0 calc(var(--chrome-toggle-size) + 10px);
+  padding: 0 calc(var(--chrome-right-toggle-offset) + var(--chrome-toggle-size) + 10px) 0 calc(var(--chrome-toggle-size) + 10px);
   background: var(--bg-soft);
 }
 
@@ -15197,7 +15197,7 @@ a[href] {
 }
 
 .app--browser-preview.app--windows .app-chrome--native-tabs {
-  padding-right: calc(var(--windows-preview-controls-width) + 48px);
+  padding-right: calc(var(--chrome-right-toggle-offset) + var(--windows-preview-controls-width) + 48px);
 }
 
 .app--linux .app-chrome--native-tabs {
@@ -18349,7 +18349,7 @@ a[href] {
 
 :root[data-theme-style] .app--darwin .app-chrome--tabs {
   padding-left: calc(var(--chrome-left-safe-offset) + var(--chrome-toggle-size) + 8px);
-  padding-right: calc(var(--chrome-toggle-size) + 12px);
+  padding-right: calc(var(--chrome-right-toggle-offset) + var(--chrome-toggle-size) + 12px);
   background: var(--bg-elev);
   transition: background var(--dur-fast), border-color var(--dur-fast);
 }
@@ -18358,7 +18358,7 @@ a[href] {
 :root[data-theme-style] .app--linux .app-chrome--native-tabs {
   gap: 12px;
   padding-left: 48px;
-  padding-right: 48px;
+  padding-right: calc(var(--chrome-right-toggle-offset) + 48px);
   background: var(--bg-elev);
   transition: background var(--dur-fast), border-color var(--dur-fast);
 }
@@ -18369,7 +18369,7 @@ a[href] {
 }
 
 :root[data-theme-style] .app--browser-preview.app--windows .app-chrome--native-tabs {
-  padding-right: calc(var(--windows-preview-controls-width) + 48px);
+  padding-right: calc(var(--chrome-right-toggle-offset) + var(--windows-preview-controls-width) + 48px);
 }
 
 :root[data-theme-style] .app--linux .app-chrome--native-tabs {
@@ -20548,7 +20548,7 @@ a[href] {
    new_design comps: panel toggles, run-mode badges, active sessions, and file
    tree folder rows all use each theme's accent + accent-soft pair. */
 :root[data-theme-style] .app--darwin .app-chrome--tabs {
-  padding-right: calc(var(--chrome-toggle-size) + 12px);
+  padding-right: calc(var(--chrome-right-toggle-offset) + var(--chrome-toggle-size) + 12px);
 }
 
 :root[data-theme-style] .app--darwin .app-chrome--tabs .app-chrome__panel-toggle--right {
