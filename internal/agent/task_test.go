@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"reasonix/internal/event"
 	"reasonix/internal/provider"
 	"reasonix/internal/tool"
 )
@@ -42,6 +43,23 @@ func TestTaskToolReturnsSubAgentFinalAnswer(t *testing.T) {
 	}
 	if got := lastUser(sub.lastReq); got != "find callers of Foo" {
 		t.Errorf("sub-agent user = %q, want the prompt verbatim", got)
+	}
+}
+
+func TestTaskToolInheritsReasoningLanguageFromContext(t *testing.T) {
+	sub := &mockProvider{name: "sub", chunks: []provider.Chunk{
+		{Type: provider.ChunkText, Text: "done"},
+		{Type: provider.ChunkDone},
+	}}
+	task := newTestTaskTool(t, sub, tool.NewRegistry(), "sys", "", "", nil)
+
+	ctx := WithReasoningLanguagePreference(testTaskContext(), "zh")
+	if _, err := task.Execute(ctx, []byte(`{"prompt":"inspect auth"}`)); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	got := lastUser(sub.lastReq)
+	if !strings.HasPrefix(got, "<reasoning-language>") || !strings.Contains(got, "Simplified Chinese") || !strings.HasSuffix(got, "inspect auth") {
+		t.Fatalf("sub-agent user = %q, want reasoning-language-prefixed prompt", got)
 	}
 }
 
@@ -326,6 +344,21 @@ func subagentRefFromOutput(t *testing.T, out string) string {
 	}
 	t.Fatalf("no subagent reference in output:\n%s", out)
 	return ""
+}
+
+func TestSubSinkForwardsUsageToParent(t *testing.T) {
+	var got []event.Event
+	parent := event.FuncSink(func(e event.Event) {
+		got = append(got, e)
+	})
+	subSinkFor("task_1", parent).Emit(event.Event{
+		Kind:        event.Usage,
+		Usage:       &provider.Usage{PromptTokens: 10, CompletionTokens: 2, TotalTokens: 12},
+		UsageSource: event.UsageSourceSubagent,
+	})
+	if len(got) != 1 || got[0].Usage == nil || got[0].UsageSource != event.UsageSourceSubagent {
+		t.Fatalf("forwarded events = %+v, want subagent usage", got)
+	}
 }
 
 func newTestTaskTool(t *testing.T, prov provider.Provider, reg *tool.Registry, sysPrompt, subagentModel, subagentEffort string, resolve func(string, string) (provider.Provider, *provider.Pricing, int, error)) *TaskTool {

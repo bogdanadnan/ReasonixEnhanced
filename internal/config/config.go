@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -39,25 +40,26 @@ func SkillNameKey(name string) string {
 
 // Config is Reasonix's runtime configuration.
 type Config struct {
-	ConfigVersion int                 `toml:"config_version"`
-	DefaultModel  string              `toml:"default_model"`
-	Language      string              `toml:"language"` // ui/model language tag (e.g. "zh"); empty = auto-detect from $LANG / $REASONIX_LANG
-	UI            UIConfig            `toml:"ui"`
-	Desktop       DesktopConfig       `toml:"desktop"`
-	Notifications NotificationsConfig `toml:"notifications"`
-	Agent         AgentConfig         `toml:"agent"`
-	Providers     []ProviderEntry     `toml:"providers"`
-	Tools         ToolsConfig         `toml:"tools"`
-	Permissions   PermissionsConfig   `toml:"permissions"`
-	Sandbox       SandboxConfig       `toml:"sandbox"`
-	Network       NetworkConfig       `toml:"network"`
-	Plugins       []PluginEntry       `toml:"plugins"`
-	Skills        SkillsConfig        `toml:"skills"`
-	Codegraph     CodegraphConfig     `toml:"codegraph"`
-	BuiltInMCP    BuiltInMCPConfig    `toml:"builtin_mcp"`
-	Statusline    StatuslineConfig    `toml:"statusline"`
-	LSP           LSPConfig           `toml:"lsp"`
-	Bot           BotConfig           `toml:"bot"`
+	ConfigVersion     int                     `toml:"config_version"`
+	DefaultModel      string                  `toml:"default_model"`
+	Language          string                  `toml:"language"` // ui/model language tag (e.g. "zh"); empty = auto-detect from $LANG / $REASONIX_LANG
+	UI                UIConfig                `toml:"ui"`
+	Desktop           DesktopConfig           `toml:"desktop"`
+	Notifications     NotificationsConfig     `toml:"notifications"`
+	Agent             AgentConfig             `toml:"agent"`
+	Providers         []ProviderEntry         `toml:"providers"`
+	Tools             ToolsConfig             `toml:"tools"`
+	Permissions       PermissionsConfig       `toml:"permissions"`
+	Sandbox           SandboxConfig           `toml:"sandbox"`
+	Network           NetworkConfig           `toml:"network"`
+	Plugins           []PluginEntry           `toml:"plugins"`
+	Skills            SkillsConfig            `toml:"skills"`
+	Codegraph         CodegraphConfig         `toml:"codegraph"`
+	BuiltInMCP        BuiltInMCPConfig        `toml:"builtin_mcp"`
+	BuiltInMCPUpdates BuiltInMCPUpdatesConfig `toml:"builtin_mcp_updates"`
+	Statusline        StatuslineConfig        `toml:"statusline"`
+	LSP               LSPConfig               `toml:"lsp"`
+	Bot               BotConfig               `toml:"bot"`
 }
 
 // UIConfig controls CLI presentation-only settings. Desktop appearance is kept in
@@ -75,6 +77,7 @@ type UIConfig struct {
 // language, terminal colours, or provider-visible prompt/request data.
 type DesktopConfig struct {
 	Language       string   `toml:"language"`         // auto|en|zh; empty/auto = browser/OS auto-detect
+	LayoutStyle    string   `toml:"layout_style"`     // classic|workbench; desktop layout style
 	Theme          string   `toml:"theme"`            // auto|dark|light; empty resolves to dark
 	ThemeStyle     string   `toml:"theme_style"`      // graphite|aurora|slate|carbon|nocturne|amber and legacy aliases
 	CloseBehavior  string   `toml:"close_behavior"`   // quit|background; desktop window close behavior
@@ -135,6 +138,15 @@ func normalizeThemeStyle(style string) string {
 	}
 }
 
+func normalizeDesktopLayoutStyle(style string) string {
+	switch strings.ToLower(strings.TrimSpace(style)) {
+	case "workbench", "workspace":
+		return "workbench"
+	default:
+		return "classic"
+	}
+}
+
 func normalizeCloseBehavior(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "quit", "exit":
@@ -177,6 +189,16 @@ func (c *Config) DesktopTheme() string {
 // chooses the default style for the resolved desktop theme.
 func (c *Config) DesktopThemeStyle() string {
 	return normalizeThemeStyle(c.Desktop.ThemeStyle)
+}
+
+// DesktopLayoutStyle normalizes the desktop layout style. It falls back to the
+// classic layout, while accepting the short-lived desktop.theme_style=workbench
+// value as a compatibility migration hint.
+func (c *Config) DesktopLayoutStyle() string {
+	if strings.EqualFold(strings.TrimSpace(c.Desktop.ThemeStyle), "workbench") && strings.TrimSpace(c.Desktop.LayoutStyle) == "" {
+		return "workbench"
+	}
+	return normalizeDesktopLayoutStyle(c.Desktop.LayoutStyle)
 }
 
 // DesktopCloseBehavior normalizes the desktop close-window preference. It falls
@@ -439,6 +461,52 @@ func (c BuiltInMCPConfig) EnabledNames() []string {
 	return out
 }
 
+const (
+	BuiltInMCPUpdateModeOff             = "off"
+	BuiltInMCPUpdateModeNotify          = "notify"
+	BuiltInMCPUpdateModeDownload        = "download"
+	BuiltInMCPUpdateModeAutoNextSession = "auto_next_session"
+
+	defaultBuiltInMCPUpdateInterval = 24 * time.Hour
+)
+
+// BuiltInMCPUpdatesConfig controls background update checks for Reasonix-owned
+// built-in MCP runtimes. The default is notify-only so startup never silently
+// changes provider-visible MCP tool schemas.
+type BuiltInMCPUpdatesConfig struct {
+	Mode          string `toml:"mode"`
+	CheckInterval string `toml:"check_interval"`
+}
+
+func (c BuiltInMCPUpdatesConfig) ResolvedMode() string {
+	switch strings.ToLower(strings.TrimSpace(c.Mode)) {
+	case BuiltInMCPUpdateModeOff:
+		return BuiltInMCPUpdateModeOff
+	case BuiltInMCPUpdateModeDownload:
+		return BuiltInMCPUpdateModeDownload
+	case BuiltInMCPUpdateModeAutoNextSession:
+		return BuiltInMCPUpdateModeAutoNextSession
+	default:
+		return BuiltInMCPUpdateModeNotify
+	}
+}
+
+func (c BuiltInMCPUpdatesConfig) CheckIntervalDuration() time.Duration {
+	raw := strings.TrimSpace(c.CheckInterval)
+	if raw == "" {
+		return defaultBuiltInMCPUpdateInterval
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return defaultBuiltInMCPUpdateInterval
+	}
+	return d
+}
+
+func (c BuiltInMCPUpdatesConfig) ResolvedCheckInterval() string {
+	return c.CheckIntervalDuration().String()
+}
+
 // BotConfig 控制多渠道 IM bot 消息网关。
 type BotConfig struct {
 	Enabled          bool                  `toml:"enabled"`
@@ -470,6 +538,7 @@ type QQBotConfig struct {
 	Enabled      bool   `toml:"enabled"`
 	AppID        string `toml:"app_id"`
 	AppSecretEnv string `toml:"app_secret_env"` // 环境变量名，如 QQ_BOT_APP_SECRET
+	Sandbox      bool   `toml:"sandbox"`        // true 使用 QQ 沙箱 API / gateway
 }
 
 // FeishuBotConfig 飞书自建应用 Bot 配置。
@@ -523,6 +592,10 @@ type BotConnectionCredential struct {
 type BotConnectionSessionMapping struct {
 	RemoteID      string `toml:"remote_id"`
 	SessionID     string `toml:"session_id"`
+	SessionSource string `toml:"session_source"`
+	ChatType      string `toml:"chat_type"`
+	UserID        string `toml:"user_id"`
+	ThreadID      string `toml:"thread_id"`
 	Scope         string `toml:"scope"`
 	WorkspaceRoot string `toml:"workspace_root"`
 	UpdatedAt     string `toml:"updated_at"`
@@ -700,7 +773,7 @@ func (c *Config) IsSkillDisabled(name string) bool {
 
 // SandboxConfig bounds the blast radius of tool calls (Phase 0: file-writer
 // confinement). WorkspaceRoot is the directory the built-in file writers
-// (write_file / edit_file / multi_edit) may modify; empty means the current
+// (write_file / edit_file / multi_edit / move_file) may modify; empty means the current
 // working directory, so writes stay inside the project by default. AllowWrite
 // lists extra directories writers may also touch (e.g. a sibling repo or a temp
 // dir). Both support ${VAR} / ${VAR:-default} expansion. Reads are unrestricted;
@@ -804,17 +877,18 @@ type AgentConfig struct {
 // token budget; the harness compacts older history as a turn's prompt approaches
 // it (see agent compaction). 0 disables compaction for the instance.
 type ProviderEntry struct {
-	Name          string            `toml:"name"`
-	Kind          string            `toml:"kind"`
-	BaseURL       string            `toml:"base_url"`
-	Model         string            `toml:"model"`      // a single model (back-compat)
-	Models        []string          `toml:"models"`     // a vendor's model list (one base_url/key, many models)
-	ModelsURL     string            `toml:"models_url"` // auto-fetch models from this URL on startup
-	Default       string            `toml:"default"`    // default model when Models is set (else Models[0])
-	APIKeyEnv     string            `toml:"api_key_env"`
-	BalanceURL    string            `toml:"balance_url"` // optional; a provider-specific wallet-balance endpoint (DeepSeek: https://api.deepseek.com/user/balance). Empty = no balance readout.
-	ContextWindow int               `toml:"context_window"`
-	Price         *provider.Pricing `toml:"price"`
+	Name          string                       `toml:"name"`
+	Kind          string                       `toml:"kind"`
+	BaseURL       string                       `toml:"base_url"`
+	Model         string                       `toml:"model"`      // a single model (back-compat)
+	Models        []string                     `toml:"models"`     // a vendor's model list (one base_url/key, many models)
+	ModelsURL     string                       `toml:"models_url"` // auto-fetch models from this URL on startup
+	Default       string                       `toml:"default"`    // default model when Models is set (else Models[0])
+	APIKeyEnv     string                       `toml:"api_key_env"`
+	BalanceURL    string                       `toml:"balance_url"` // optional; a provider-specific wallet-balance endpoint (DeepSeek: https://api.deepseek.com/user/balance). Empty = no balance readout.
+	ContextWindow int                          `toml:"context_window"`
+	Price         *provider.Pricing            `toml:"price"`  // legacy/provider-wide fallback
+	Prices        map[string]*provider.Pricing `toml:"prices"` // optional per-model prices; keys are model ids
 	// Thinking / Effort are provider-kind-specific knobs forwarded to the provider
 	// via Config.Extra. The anthropic provider reads Thinking="adaptive" to enable
 	// extended thinking and Effort ("low".."max") to tune depth. The
@@ -951,6 +1025,35 @@ func (e *ProviderEntry) HasModel(m string) bool {
 		}
 	}
 	return false
+}
+
+// PriceForModel returns the configured per-1M-token price for model. Per-model
+// prices win; the legacy provider-wide price is a fallback for older configs.
+func (e *ProviderEntry) PriceForModel(model string) *provider.Pricing {
+	if e == nil {
+		return nil
+	}
+	if e.Prices != nil {
+		if p := e.Prices[strings.TrimSpace(model)]; p != nil {
+			return clonePricing(p)
+		}
+	}
+	return clonePricing(e.Price)
+}
+
+func (e *ProviderEntry) applyModelPrice() {
+	if e == nil {
+		return
+	}
+	e.Price = e.PriceForModel(e.Model)
+}
+
+func clonePricing(p *provider.Pricing) *provider.Pricing {
+	if p == nil {
+		return nil
+	}
+	cp := *p
+	return &cp
 }
 
 // ToolsConfig selects which built-in tools are enabled. Empty means all of them.
@@ -1138,6 +1241,10 @@ func Default() *Config {
 		// Time is dependency-free and bundled, so expose it by default. Context7
 		// can invoke a package runner and remains opt-in.
 		BuiltInMCP: BuiltInMCPConfig{TimeEnabled: true},
+		BuiltInMCPUpdates: BuiltInMCPUpdatesConfig{
+			Mode:          BuiltInMCPUpdateModeNotify,
+			CheckInterval: defaultBuiltInMCPUpdateInterval.String(),
+		},
 		// LSP tools on by default, but dormant until a language server is on PATH;
 		// a missing server yields an install hint rather than an error.
 		LSP:     LSPConfig{Enabled: true},
@@ -1152,11 +1259,26 @@ func Default() *Config {
 			Weixin:           WeixinBotConfig{AccountID: "default", TokenEnv: "WEIXIN_BOT_TOKEN", APIBase: "https://ilinkai.weixin.qq.com"},
 		},
 		Providers: []ProviderEntry{
-			{Name: "deepseek-flash", Kind: "openai", BaseURL: "https://api.deepseek.com", Model: "deepseek-v4-flash", APIKeyEnv: "DEEPSEEK_API_KEY", BalanceURL: "https://api.deepseek.com/user/balance", ContextWindow: 1_000_000, Price: &provider.Pricing{CacheHit: 0.02, Input: 1, Output: 2, Currency: "¥"}},
-			{Name: "deepseek-pro", Kind: "openai", BaseURL: "https://api.deepseek.com", Model: "deepseek-v4-pro", APIKeyEnv: "DEEPSEEK_API_KEY", BalanceURL: "https://api.deepseek.com/user/balance", ContextWindow: 1_000_000, Price: &provider.Pricing{CacheHit: 0.025, Input: 3, Output: 6, Currency: "¥"}},
+			{Name: "deepseek-flash", Kind: "openai", BaseURL: "https://api.deepseek.com", Model: "deepseek-v4-flash", APIKeyEnv: "DEEPSEEK_API_KEY", BalanceURL: "https://api.deepseek.com/user/balance", ContextWindow: 1_000_000, Price: deepSeekV4FlashPrice()},
+			{Name: "deepseek-pro", Kind: "openai", BaseURL: "https://api.deepseek.com", Model: "deepseek-v4-pro", APIKeyEnv: "DEEPSEEK_API_KEY", BalanceURL: "https://api.deepseek.com/user/balance", ContextWindow: 1_000_000, Price: deepSeekV4ProPrice()},
 			{Name: "mimo-pro", Kind: "openai", BaseURL: "https://token-plan-cn.xiaomimimo.com/v1", Model: "mimo-v2.5-pro", APIKeyEnv: "MIMO_API_KEY", ContextWindow: 1_000_000, Price: &provider.Pricing{CacheHit: 0.025, Input: 3, Output: 6, Currency: "¥"}, NoProxy: true},
 			{Name: "mimo-flash", Kind: "openai", BaseURL: "https://token-plan-cn.xiaomimimo.com/v1", Model: "mimo-v2.5", APIKeyEnv: "MIMO_API_KEY", ContextWindow: 1_000_000, Price: &provider.Pricing{CacheHit: 0.02, Input: 1, Output: 2, Currency: "¥"}, NoProxy: true},
 		},
+	}
+}
+
+func deepSeekV4FlashPrice() *provider.Pricing {
+	return &provider.Pricing{CacheHit: 0.0028, Input: 0.14, Output: 0.28, Currency: "$"}
+}
+
+func deepSeekV4ProPrice() *provider.Pricing {
+	return &provider.Pricing{CacheHit: 0.003625, Input: 0.435, Output: 0.87, Currency: "$"}
+}
+
+func deepSeekV4Prices() map[string]*provider.Pricing {
+	return map[string]*provider.Pricing{
+		"deepseek-v4-flash": deepSeekV4FlashPrice(),
+		"deepseek-v4-pro":   deepSeekV4ProPrice(),
 	}
 }
 
@@ -1231,8 +1353,10 @@ func LoadForRoot(root string) (*Config, error) {
 	normalizeLegacyMCPTiers(cfg)
 	normalizeLegacyProviderModels(cfg)
 	normalizeDesktopOfficialProviderAccess(cfg)
+	normalizeOfficialDeepSeekModels(cfg)
 	normalizeEffortConfig(cfg)
 	backfillDeepSeekPro(cfg)
+	backfillDeepSeekOfficialPrices(cfg)
 	// First run (no config file anywhere): keep CodeGraph off until the user opts
 	// in. An existing config — even one without a [codegraph] section — keeps the
 	// built-in default (on), so an upgrade never silently drops code intelligence.
@@ -1276,6 +1400,41 @@ func backfillDeepSeekPro(c *Config) {
 			return
 		}
 	}
+}
+
+func backfillDeepSeekOfficialPrices(c *Config) {
+	if c == nil {
+		return
+	}
+	defaults := deepSeekV4Prices()
+	for i := range c.Providers {
+		p := &c.Providers[i]
+		if officialProviderKind(p) != "deepseek" {
+			continue
+		}
+		if p.Prices == nil {
+			p.Prices = map[string]*provider.Pricing{}
+		}
+		for model, price := range defaults {
+			if p.HasModel(model) && p.Prices[model] == nil {
+				p.Prices[model] = clonePricing(price)
+			}
+		}
+	}
+}
+
+func officialProviderKind(p *ProviderEntry) string {
+	if p == nil {
+		return ""
+	}
+	u, err := url.Parse(strings.TrimSpace(p.BaseURL))
+	if err != nil {
+		return ""
+	}
+	if strings.EqualFold(u.Hostname(), "api.deepseek.com") {
+		return "deepseek"
+	}
+	return ""
 }
 
 func resolveRoot(root string) string {
@@ -1343,6 +1502,7 @@ func LoadForEdit(path string) *Config {
 	normalizeLegacyMCPTiers(cfg)
 	normalizeLegacyProviderModels(cfg)
 	normalizeDesktopOfficialProviderAccess(cfg)
+	backfillDeepSeekOfficialPrices(cfg)
 	normalizeEffortConfig(cfg)
 	return cfg
 }
@@ -1450,6 +1610,52 @@ func normalizeLegacyProviderModels(c *Config) {
 			p.Model = model
 		}
 	}
+}
+
+func normalizeOfficialDeepSeekModels(c *Config) {
+	if c == nil {
+		return
+	}
+	for i := range c.Providers {
+		p := &c.Providers[i]
+		if officialProviderHost(p.BaseURL) != "api.deepseek.com" {
+			continue
+		}
+		switch strings.TrimSpace(p.Name) {
+		case "deepseek":
+			ensureProviderModels(p, []string{"deepseek-v4-flash", "deepseek-v4-pro"}, "deepseek-v4-flash")
+		case "deepseek-flash":
+			ensureProviderModels(p, []string{"deepseek-v4-flash"}, "deepseek-v4-flash")
+		case "deepseek-pro":
+			ensureProviderModels(p, []string{"deepseek-v4-pro"}, "deepseek-v4-pro")
+		}
+	}
+}
+
+func officialProviderHost(baseURL string) string {
+	u, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Hostname())
+}
+
+func ensureProviderModels(p *ProviderEntry, required []string, fallbackDefault string) {
+	if p == nil {
+		return
+	}
+	models := mergeModelLists(required, p.ModelList())
+	if len(models) == 0 {
+		return
+	}
+	p.Model = models[0]
+	if len(models) > 1 {
+		p.Models = models
+		p.Default = firstKnownModel(p.Default, models, fallbackDefault)
+		return
+	}
+	p.Models = nil
+	p.Default = ""
 }
 
 func legacyOfficialProviderModel(name string) string {
@@ -1587,9 +1793,11 @@ func ensureDeepSeekOfficialProvider(c *Config) {
 		APIKeyEnv:     "DEEPSEEK_API_KEY",
 		BalanceURL:    "https://api.deepseek.com/user/balance",
 		ContextWindow: 1_000_000,
+		Prices:        deepSeekV4Prices(),
 	}
 	if old, ok := c.Provider("deepseek-flash"); ok {
 		entry = officialProviderFromLegacy(entry, old)
+		entry.Prices = deepSeekV4Prices()
 		entry.Models = mergeModelLists([]string{"deepseek-v4-flash", "deepseek-v4-pro"}, old.ModelList())
 		entry.Default = firstKnownModel(entry.Default, entry.Models, "deepseek-v4-flash")
 	}
@@ -1597,14 +1805,18 @@ func ensureDeepSeekOfficialProvider(c *Config) {
 }
 
 func ensureMimoAPIProvider(c *Config) {
-	if _, ok := c.Provider("mimo-api"); ok {
+	models := []string{"mimo-v2.5-pro", "mimo-v2.5", "mimo-v2-omni"}
+	if p, ok := c.Provider("mimo-api"); ok {
+		if isOfficialMimoAPIProvider(p) {
+			mergeCuratedModelsIntoProvider(p, models, "mimo-v2.5-pro")
+		}
 		return
 	}
 	c.Providers = append(c.Providers, ProviderEntry{
 		Name:          "mimo-api",
 		Kind:          "openai",
 		BaseURL:       "https://api.xiaomimimo.com/v1",
-		Models:        []string{"mimo-v2.5-pro"},
+		Models:        models,
 		Default:       "mimo-v2.5-pro",
 		APIKeyEnv:     "MIMO_API_KEY",
 		ContextWindow: 1_048_576,
@@ -1613,14 +1825,19 @@ func ensureMimoAPIProvider(c *Config) {
 }
 
 func ensureMimoTokenPlanProvider(c *Config, includeMimoFlash bool) {
-	if _, ok := c.Provider("mimo-token-plan"); ok {
+	models := []string{"mimo-v2.5-pro", "mimo-v2.5"}
+	if p, ok := c.Provider("mimo-token-plan"); ok {
+		if isOfficialMimoTokenPlanProvider(p) {
+			mergeCuratedModelsIntoProvider(p, models, "mimo-v2.5-pro")
+			clearMixedMimoTokenPlanPrice(p)
+		}
 		return
 	}
 	entry := ProviderEntry{
 		Name:          "mimo-token-plan",
 		Kind:          "openai",
 		BaseURL:       "https://token-plan-cn.xiaomimimo.com/v1",
-		Models:        []string{"mimo-v2.5-pro"},
+		Models:        models,
 		Default:       "mimo-v2.5-pro",
 		APIKeyEnv:     "MIMO_API_KEY",
 		ContextWindow: 1_048_576,
@@ -1628,7 +1845,7 @@ func ensureMimoTokenPlanProvider(c *Config, includeMimoFlash bool) {
 	}
 	if old, ok := c.Provider("mimo-pro"); ok {
 		entry = officialProviderFromLegacy(entry, old)
-		entry.Models = mergeModelLists([]string{"mimo-v2.5-pro"}, old.ModelList())
+		entry.Models = mergeModelLists(models, old.ModelList())
 		entry.Default = firstKnownModel(entry.Default, entry.Models, "mimo-v2.5-pro")
 	}
 	if old, ok := c.Provider("mimo-flash"); includeMimoFlash && ok {
@@ -1638,7 +1855,35 @@ func ensureMimoTokenPlanProvider(c *Config, includeMimoFlash bool) {
 		entry.Models = mergeModelLists(entry.Models, old.ModelList())
 		entry.Default = firstKnownModel(entry.Default, entry.Models, entry.Default)
 	}
+	clearMixedMimoTokenPlanPrice(&entry)
 	c.Providers = append(c.Providers, entry)
+}
+
+func isOfficialMimoAPIProvider(e *ProviderEntry) bool {
+	return isOpenAIProviderKind(e) && officialMimoHost(e.BaseURL) == "api.xiaomimimo.com"
+}
+
+func isOfficialMimoTokenPlanProvider(e *ProviderEntry) bool {
+	return isOpenAIProviderKind(e) && officialMimoHost(e.BaseURL) == "token-plan-cn.xiaomimimo.com"
+}
+
+func isOpenAIProviderKind(e *ProviderEntry) bool {
+	return e != nil && strings.EqualFold(strings.TrimSpace(e.Kind), "openai")
+}
+
+func mergeCuratedModelsIntoProvider(e *ProviderEntry, models []string, fallback string) {
+	currentDefault := e.Default
+	if strings.TrimSpace(currentDefault) == "" {
+		currentDefault = e.Model
+	}
+	e.Models = mergeModelLists(models, e.ModelList())
+	e.Default = firstKnownModel(currentDefault, e.Models, fallback)
+}
+
+func clearMixedMimoTokenPlanPrice(e *ProviderEntry) {
+	if e != nil && e.HasModel("mimo-v2.5-pro") && e.HasModel("mimo-v2.5") {
+		e.Price = nil
+	}
 }
 
 func officialProviderFromLegacy(entry ProviderEntry, old *ProviderEntry) ProviderEntry {
@@ -1973,6 +2218,7 @@ func (c *Config) ResolveModel(ref string) (*ProviderEntry, bool) {
 		if e, found := c.Provider(prov); found && e.HasModel(model) {
 			cp := *e
 			cp.Model = model
+			cp.applyModelPrice()
 			return &cp, true
 		}
 	}
@@ -1980,6 +2226,7 @@ func (c *Config) ResolveModel(ref string) (*ProviderEntry, bool) {
 	if e, found := c.Provider(ref); found {
 		cp := *e
 		cp.Model = e.DefaultModel()
+		cp.applyModelPrice()
 		return &cp, true
 	}
 	// a bare model name → the provider that lists it
@@ -1987,6 +2234,7 @@ func (c *Config) ResolveModel(ref string) (*ProviderEntry, bool) {
 		if c.Providers[i].HasModel(ref) {
 			cp := c.Providers[i]
 			cp.Model = ref
+			cp.applyModelPrice()
 			return &cp, true
 		}
 	}
