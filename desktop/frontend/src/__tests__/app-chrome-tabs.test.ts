@@ -64,15 +64,44 @@ ok(
 );
 
 ok(
+  finalDeclaration(".app-chrome__tab-strip", "overflow") === "hidden",
+  "AppChrome tab strip clips tabs to the available chrome width",
+);
+
+ok(
+  finalDeclaration(".app-chrome__tab-strip", "min-width") === "0",
+  "AppChrome tab strip can shrink beside the right dock",
+);
+
+ok(
+  finalDeclaration(":root[data-theme-style] .app-chrome--tabs .tabbar__tabs", "max-width") === "100%",
+  "themed AppChrome tab lists keep a bounded maximum width",
+);
+
+ok(
   /workbenchChrome \? \(\s*<span className="app-chrome__spacer" aria-hidden="true" \/>/s.test(appChromeSource),
   "AppChrome workbench branch skips the tab strip",
 );
 
+ok(
+  /app-chrome__tools--fixed/.test(appChromeSource),
+  "AppChrome renders the command search as a fixed chrome tool",
+);
+
 for (const selector of [
   ".app--darwin .app-chrome--tabs",
+  ":root[data-theme-style] .app--darwin .app-chrome--tabs",
+]) {
+  const rightSpace = finalDeclaration(selector, "padding-right") ?? finalDeclaration(selector, "padding") ?? "";
+  ok(
+    rightSpace.includes("--chrome-toggle-size") && !rightSpace.includes("--chrome-right-toggle-offset"),
+    `${selector} reserves fixed chrome tool width without shrinking for the right dock`,
+  );
+}
+
+for (const selector of [
   ".app--windows .app-chrome--native-tabs",
   ".app--linux .app-chrome--native-tabs",
-  ":root[data-theme-style] .app--darwin .app-chrome--tabs",
   ":root[data-theme-style] .app--windows .app-chrome--native-tabs",
   ":root[data-theme-style] .app--linux .app-chrome--native-tabs",
 ]) {
