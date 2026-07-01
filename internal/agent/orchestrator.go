@@ -194,21 +194,26 @@ When done, respond with ONLY valid JSON (no markdown fences, no extra text):
 User request:
 %s`, o.planPath(), userInput)
 
-	if err := o.planner.Run(ctx, prompt); err != nil {
-		return fmt.Errorf("planner: %w", err)
-	}
-
-	// Parse planners structured response
-	text := o.lastAssistantText(o.planner)
 	var planResult struct {
 		PhaseCount int `json:"phase_count"`
 		TaskCount  int `json:"task_count"`
 	}
-	if err := o.parseStructured(text, &planResult); err != nil {
+	if err := o.requestStructured(ctx, o.planner, prompt, &planResult,
+		`{"phase_count": N, "task_count": M}`, 3); err != nil {
 		return fmt.Errorf("planner response: %w", err)
 	}
 
-	// Parse the plan file the planner wrote
+	// Verify the plan file was actually written. If not, nudge the planner.
+	if _, err := os.Stat(o.planPath()); err != nil {
+		nudge := fmt.Sprintf("You did not write the plan file to %s. Please write_file to that path with the plan in the specified format (## Phase headings, - [ ] tasks). Then respond with the JSON summary again.", o.planPath())
+		o.planner.Session().Add(provider.Message{Role: provider.RoleUser, Content: nudge})
+		if err := o.requestStructured(ctx, o.planner, "Write the plan file now.", &planResult,
+			`{"phase_count": N, "task_count": M}`, 2); err != nil {
+			return fmt.Errorf("planner file check: %w", err)
+		}
+	}
+
+	// Parse the plan file
 	phases, err := parsePlan(o.planPath())
 	if err != nil {
 		return fmt.Errorf("parse plan: %w", err)
@@ -304,15 +309,22 @@ After writing the review file, respond with ONLY valid JSON:
 		return fmt.Errorf("reviewer: %w", err)
 	}
 
-	// Parse reviewer verdict
-	text := o.lastAssistantText(o.reviewer)
+	// Parse reviewer verdict with nudge support
 	var verdict struct {
 		Status  string `json:"status"`
 		Issues  int    `json:"issues"`
 		Summary string `json:"summary"`
 	}
-	if err := o.parseStructured(text, &verdict); err != nil {
-		return fmt.Errorf("reviewer response: %w", err)
+	if err := o.parseStructured(o.lastAssistantText(o.reviewer), &verdict); err != nil {
+		// Nudge: re-run the reviewer with corrective prompt
+		nudge := fmt.Sprintf("Your response was not valid JSON. Respond with ONLY: {\"status\":\"pass\",\"summary\":\"...\"} or {\"status\":\"fail\",\"issues\":N,\"summary\":\"...\"}")
+		o.reviewer.Session().Add(provider.Message{Role: provider.RoleUser, Content: nudge})
+		if err2 := o.reviewer.Run(ctx, "Review the work again and respond with valid JSON."); err2 != nil {
+			return fmt.Errorf("reviewer nudge: %w", err2)
+		}
+		if err3 := o.parseStructured(o.lastAssistantText(o.reviewer), &verdict); err3 != nil {
+			return fmt.Errorf("reviewer response after nudge: %w", err3)
+		}
 	}
 
 	// --- SECOND REVIEWER (if configured) ---
@@ -357,14 +369,20 @@ After writing the review file, respond with ONLY valid JSON:
 			return fmt.Errorf("second reviewer: %w", err)
 		}
 
-		text2 := o.lastAssistantText(o.reviewer2)
 		var verdict2 struct {
 			Status  string `json:"status"`
 			Issues  int    `json:"issues"`
 			Summary string `json:"summary"`
 		}
-		if err := o.parseStructured(text2, &verdict2); err != nil {
-			return fmt.Errorf("second reviewer response: %w", err)
+		if err := o.parseStructured(o.lastAssistantText(o.reviewer2), &verdict2); err != nil {
+			nudge := fmt.Sprintf("Your response was not valid JSON. Respond with ONLY: {\"status\":\"pass\",\"summary\":\"...\"} or {\"status\":\"fail\",\"issues\":N,\"summary\":\"...\"}")
+			o.reviewer2.Session().Add(provider.Message{Role: provider.RoleUser, Content: nudge})
+			if err2 := o.reviewer2.Run(ctx, "Review the work again and respond with valid JSON."); err2 != nil {
+				return fmt.Errorf("second reviewer nudge: %w", err2)
+			}
+			if err3 := o.parseStructured(o.lastAssistantText(o.reviewer2), &verdict2); err3 != nil {
+				return fmt.Errorf("second reviewer after nudge: %w", err3)
+			}
 		}
 
 		if verdict2.Status != "pass" {
@@ -438,6 +456,42 @@ func (o *Orchestrator) lastAssistantText(agent *Agent) string {
 		}
 	}
 	return ""
+}
+
+// requestStructured runs the agent with the given prompt, then parses the
+// final assistant message as JSON into target. If parsing fails, it injects a
+// corrective nudge into the agent's session and retries up to maxNudges times.
+func (o *Orchestrator) requestStructured(ctx context.Context, agent *Agent, prompt string, target interface{}, schemaDesc string, maxNudges int) error {
+	for attempt := 0; attempt <= maxNudges; attempt++ {
+		if attempt > 0 {
+			// Inject a corrective nudge with the parse error and expected format
+			nudge := fmt.Sprintf(
+				"Your previous response was not valid JSON for: %s.\n\n"+
+					"Please respond with ONLY a valid JSON object, no markdown fences, "+
+					"no surrounding text. Example: {\"key\": \"value\"}\n\n"+
+					"Expected format: %s\n\n"+
+					"Try again.",
+				schemaDesc, schemaDesc,
+			)
+			agent.Session().Add(provider.Message{Role: provider.RoleUser, Content: nudge})
+			slog.Info("orchestrator: nudging agent for structured response", "attempt", attempt)
+		}
+
+		if err := agent.Run(ctx, prompt); err != nil {
+			return fmt.Errorf("agent run: %w", err)
+		}
+
+		text := o.lastAssistantText(agent)
+		if err := o.parseStructured(text, target); err != nil {
+			if attempt < maxNudges {
+				slog.Warn("orchestrator: parse error, will nudge", "err", err)
+				continue
+			}
+			return fmt.Errorf("structured response after %d nudges: %w", maxNudges, err)
+		}
+		return nil
+	}
+	return nil
 }
 
 func (o *Orchestrator) parseStructured(text string, target interface{}) error {
