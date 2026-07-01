@@ -69,12 +69,19 @@ func NewOrchestrator(opts OrchestratorOptions) *Orchestrator {
 	if opts.MaxRetries <= 0 {
 		opts.MaxRetries = 3
 	}
+	// Ensure the orchDir is absolute so agents using write_file can reach it.
+	orchDir := opts.OrchDir
+	if !filepath.IsAbs(orchDir) {
+		if abs, err := filepath.Abs(orchDir); err == nil {
+			orchDir = abs
+		}
+	}
 	return &Orchestrator{
 		planner:    opts.Planner,
 		developer:  opts.Developer,
 		reviewer:   opts.Reviewer,
 		reviewer2:  opts.Reviewer2,
-		orchDir:    opts.OrchDir,
+		orchDir:    orchDir,
 		maxRetries: opts.MaxRetries,
 	}
 }
@@ -548,12 +555,14 @@ JSON object containing your verdict.`
 }
 
 // ReviewerToolRegistry returns the tool set for the reviewer: read-only tools
-// plus bash (for git diff, git log, build verification).
+// plus bash (for git diff, git log, build verification) and write_file (for review_N.md).
 func ReviewerToolRegistry(parent *tool.Registry) *tool.Registry {
 	reg := FilterReadOnlyRegistry(parent, reviewerNonResearchTools...)
-	// Also add bash explicitly (it's not read-only, but the reviewer needs git diff/build)
 	if bash, ok := parent.Get("bash"); ok {
 		reg.Add(bash)
+	}
+	if wf, ok := parent.Get("write_file"); ok {
+		reg.Add(wf)
 	}
 	return reg
 }

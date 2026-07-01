@@ -1589,41 +1589,31 @@ func (a *App) SetCompactRatio(v float64) error {
 }
 
 func (a *App) SetOrchestratorEnabled(enabled bool) error {
-	// Orchestrator toggle doesn't need a rebuild — it takes effect on the next
-	// session launch. Just save the config change without blocking.
-	cfg, path, err := a.loadDesktopUserConfigForEdit()
-	if err != nil {
-		return err
-	}
-	cfg.Orchestrator.Enabled = enabled
-	return cfg.SaveTo(path)
+	return a.applyConfigChange(func(c *config.Config) error {
+		c.Orchestrator.Enabled = enabled
+		return nil
+	})
 }
 
 func (a *App) SetOrchestratorReviewerModel(model string) error {
-	cfg, path, err := a.loadDesktopUserConfigForEdit()
-	if err != nil {
-		return err
-	}
-	cfg.Orchestrator.ReviewerModel = model
-	return cfg.SaveTo(path)
+	return a.applyConfigChange(func(c *config.Config) error {
+		c.Orchestrator.ReviewerModel = model
+		return nil
+	})
 }
 
 func (a *App) SetOrchestratorSecondReviewerModel(model string) error {
-	cfg, path, err := a.loadDesktopUserConfigForEdit()
-	if err != nil {
-		return err
-	}
-	cfg.Orchestrator.SecondReviewerModel = model
-	return cfg.SaveTo(path)
+	return a.applyConfigChange(func(c *config.Config) error {
+		c.Orchestrator.SecondReviewerModel = model
+		return nil
+	})
 }
 
 func (a *App) SetOrchestratorMaxRetries(n int) error {
-	cfg, path, err := a.loadDesktopUserConfigForEdit()
-	if err != nil {
-		return err
-	}
-	cfg.Orchestrator.MaxRetries = n
-	return cfg.SaveTo(path)
+	return a.applyConfigChange(func(c *config.Config) error {
+		c.Orchestrator.MaxRetries = n
+		return nil
+	})
 }
 
 func (a *App) SetReasoningLanguage(lang string) error {

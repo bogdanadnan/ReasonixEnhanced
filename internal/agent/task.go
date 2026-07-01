@@ -392,7 +392,12 @@ var plannerNonResearchTools = []string{
 // state, wait on jobs, or expand commands instead of inspecting context.
 func PlannerToolRegistry(parent *tool.Registry) *tool.Registry {
 	exclude := append(SubagentMetaTools(), plannerNonResearchTools...)
-	return FilterReadOnlyRegistry(parent, exclude...)
+	reg := FilterReadOnlyRegistry(parent, exclude...)
+	// Planner needs write_file to write plan.md and workload_brief.md.
+	if wf, ok := parent.Get("write_file"); ok {
+		reg.Add(wf)
+	}
+	return reg
 }
 
 // FilterReadOnlyRegistry builds a sub-registry containing only tools whose

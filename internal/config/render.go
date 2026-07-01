@@ -389,6 +389,21 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	}
 	b.WriteString("\n")
 
+	if c.Orchestrator.Enabled || c.Orchestrator.ReviewerModel != "" || c.Orchestrator.SecondReviewerModel != "" {
+		b.WriteString("[orchestrator]\n")
+		fmt.Fprintf(&b, "enabled = %v   # planner → developer → reviewer workflow\n", c.Orchestrator.Enabled)
+		if c.Orchestrator.ReviewerModel != "" {
+			fmt.Fprintf(&b, "reviewer_model = %q   # model that reviews the developer's work\n", c.Orchestrator.ReviewerModel)
+		} else {
+			b.WriteString("# reviewer_model = \"deepseek/deepseek-v4-pro\"   # required when enabled\n")
+		}
+		if c.Orchestrator.SecondReviewerModel != "" {
+			fmt.Fprintf(&b, "second_reviewer_model = %q   # optional cross-check reviewer\n", c.Orchestrator.SecondReviewerModel)
+		}
+		fmt.Fprintf(&b, "max_retries = %d   # max developer-reviewer loops per task\n", orchMaxRetries(c.Orchestrator.MaxRetries))
+		b.WriteString("\n")
+	}
+
 	if shouldRenderBot(c, defaults, scope) {
 		b.WriteString("# Bot gateway: multi-channel IM bot for QQ, Feishu/Lark, and WeChat.\n")
 		b.WriteString("[bot]\n")
@@ -768,4 +783,11 @@ func formatFloat(f float64) string {
 		s += ".0"
 	}
 	return s
+}
+
+func orchMaxRetries(n int) int {
+	if n <= 0 {
+		return 3
+	}
+	return n
 }
