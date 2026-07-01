@@ -285,6 +285,24 @@ func (c *Config) SetColdResumePrune(enabled bool) error {
 	return nil
 }
 
+// SetCompactTarget sets the compaction target as a fraction of the context window.
+func (c *Config) SetCompactTarget(v float64) error {
+	if v < 0 || v > 1 {
+		return fmt.Errorf("compact_target must be between 0 and 1")
+	}
+	c.Agent.CompactTarget = v
+	return nil
+}
+
+// SetCompactRatio sets the compaction trigger threshold as a fraction of the context window.
+func (c *Config) SetCompactRatio(v float64) error {
+	if v < 0 || v > 1 {
+		return fmt.Errorf("compact_ratio must be between 0 and 1")
+	}
+	c.Agent.CompactRatio = v
+	return nil
+}
+
 // SetDesktopTelemetry sets whether the desktop sends the anonymous launch ping.
 func (c *Config) SetDesktopTelemetry(enabled bool) error {
 	c.Desktop.Telemetry = &enabled

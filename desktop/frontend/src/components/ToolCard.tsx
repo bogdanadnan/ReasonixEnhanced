@@ -51,10 +51,8 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId }: { item
       ? [item.profile.model, item.profile.effort ? `effort ${item.profile.effort}` : ""].filter(Boolean).join(" · ")
       : "";
 
-  // All tools default to collapsed. Sub-agent tools open while running so the
-  // user sees nested calls; they collapse when done. Reasoning (AssistantMessage)
-  // also opens while streaming and closes on finish.
-  const defaultOpen = hasNested ? item.status === "running" : false;
+  // All tools show their body while running so the user sees live output.
+  const defaultOpen = item.status === "running";
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
   const open = userOpen ?? defaultOpen;
   const openRef = useRef(open);

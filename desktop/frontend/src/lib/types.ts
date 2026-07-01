@@ -717,6 +717,22 @@ export interface AgentView {
   systemPrompt: string;
   coldResumePrune: boolean;
   reasoningLanguage: string; // "auto" | "zh" | "en"
+  compactTarget: number;
+  compactRatio: number;
+}
+
+export interface OrchPhase {
+  name: string;
+  tasks: string[];
+  done: string[];
+}
+
+export interface OrchState {
+  phase: number;
+  task: number;
+  phases: OrchPhase[];
+  retries: number;
+  status: string;
 }
 
 export interface BotAllowlistView {

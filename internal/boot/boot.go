@@ -502,7 +502,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 		}
 		taskToolAdded = true
 		reg.Add(agent.NewTaskTool(execProv, entry.Price, reg, maxSteps,
-			entry.ContextWindow, cfg.Agent.SoftCompactRatio, cfg.Agent.CompactRatio, cfg.Agent.CompactForceRatio,
+			entry.ContextWindow, cfg.Agent.SoftCompactRatio, cfg.Agent.CompactRatio, cfg.Agent.CompactForceRatio, cfg.Agent.CompactTarget,
 			cfg.Agent.Temperature, config.ArchiveDir(), "", headlessGate,
 			taskModel, taskEffort, resolveSubagentProvider).
 			WithTranscripts(subagentStore, root, modelName, entry.Effort).
@@ -821,11 +821,13 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 		SoftCompactRatio:  cfg.Agent.SoftCompactRatio,
 		CompactRatio:      cfg.Agent.CompactRatio,
 		CompactForceRatio: cfg.Agent.CompactForceRatio,
+		CompactTarget:     cfg.Agent.CompactTarget,
 		ArchiveDir:        config.ArchiveDir(),
 		ReasoningLanguage: cfg.ReasoningLanguage(),
 	}, sink)
 
 	var runner agent.Runner = executor
+	var orch *agent.Orchestrator
 	label := entry.Model
 	var classifier *control.ProviderAutoPlanClassifier
 
@@ -833,19 +835,27 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 	// Coordinator with its own session, kept separate for cache stability. The
 	// planner gets the same standing memory context and a filtered read-only
 	// research tool set, so it can inspect rules/code without side effects.
+	// We resolve the planner model once here — both Coordinator and Orchestrator
+	// may use it, but only one is activated per session.
+	var plannerAgent *agent.Agent
+	var plannerProv provider.Provider
+	var plannerSess *agent.Session
+	var plannerTools *tool.Registry
 	if pm := cfg.Agent.PlannerModel; pm != "" && !tokenEconomy {
 		pe, ok := cfg.ResolveModel(pm)
 		if !ok {
 			return nil, fmt.Errorf("planner_model %q is not a configured provider", pm)
 		}
 		if pe.Model != entry.Model {
-			plannerProv, err := NewProviderWithProxy(pe, proxySpec)
+			pp, err := NewProviderWithProxy(pe, proxySpec)
 			if err != nil {
 				return nil, fmt.Errorf("planner %q: %w", pm, err)
 			}
-			plannerSess := agent.NewSession(agent.PlannerPromptWithContext(mem.Block()))
-			plannerTools := agent.PlannerToolRegistry(reg)
-			runner = agent.NewCoordinator(plannerProv, plannerSess, pe.Price, plannerTools, agent.Options{
+			plannerProv = pp
+			plannerSess = agent.NewSession(agent.PlannerPromptWithContext(mem.Block()))
+			plannerTools = agent.PlannerToolRegistry(reg)
+
+			plannerAgent = agent.New(plannerProv, plannerTools, plannerSess, agent.Options{
 				MaxSteps:          cfg.Agent.PlannerMaxSteps,
 				MaxStepsKey:       "agent.planner_max_steps",
 				Gate:              headlessGate,
@@ -853,12 +863,67 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 				SoftCompactRatio:  cfg.Agent.SoftCompactRatio,
 				CompactRatio:      cfg.Agent.CompactRatio,
 				CompactForceRatio: cfg.Agent.CompactForceRatio,
+				CompactTarget:     cfg.Agent.CompactTarget,
 				ArchiveDir:        config.ArchiveDir(),
 				ReasoningLanguage: cfg.ReasoningLanguage(),
-			}, executor, cfg.Agent.Temperature, sink, control.TaskWarrantsPlanner)
-			label = entry.Model + " + planner " + pe.Model
+			}, sink)
+
+			// Orchestrator takes priority. If it's enabled, wrap in orchestrator.
+			// Otherwise, wrap in Coordinator (two-model mode).
+			if cfg.Orchestrator.Enabled && cfg.Orchestrator.ReviewerModel != "" {
+				re, ok := cfg.ResolveModel(cfg.Orchestrator.ReviewerModel)
+				if !ok {
+					return nil, fmt.Errorf("orchestrator.reviewer_model %q is not a configured provider", cfg.Orchestrator.ReviewerModel)
+				}
+				reviewerProv, err := NewProviderWithProxy(re, proxySpec)
+				if err != nil {
+					return nil, fmt.Errorf("orchestrator reviewer %q: %w", cfg.Orchestrator.ReviewerModel, err)
+				}
+				reviewerTools := agent.ReviewerToolRegistry(reg)
+				reviewerSess := agent.NewSession(agent.ReviewerSystemPrompt())
+				reviewerAgent := agent.New(reviewerProv, reviewerTools, reviewerSess, agent.Options{
+					MaxSteps:          25,
+					Gate:              headlessGate,
+					ContextWindow:     re.ContextWindow,
+					SoftCompactRatio:  cfg.Agent.SoftCompactRatio,
+					CompactRatio:      cfg.Agent.CompactRatio,
+					CompactForceRatio: cfg.Agent.CompactForceRatio,
+					CompactTarget:     cfg.Agent.CompactTarget,
+					ArchiveDir:        config.ArchiveDir(),
+					ReasoningLanguage: cfg.ReasoningLanguage(),
+				}, sink)
+
+				maxRetries := cfg.Orchestrator.MaxRetries
+				if maxRetries <= 0 {
+					maxRetries = 3
+				}
+			orch = agent.NewOrchestrator(agent.OrchestratorOptions{
+					Planner:    plannerAgent,
+					Developer:  executor,
+					Reviewer:   reviewerAgent,
+					OrchDir:    filepath.Join(config.SessionDir(), ".reasonix", "orchestrator"),
+					MaxRetries: maxRetries,
+				})
+				runner = orch
+				label = entry.Model + " + planner " + pe.Model + " + reviewer " + re.Name
+			} else {
+				runner = agent.NewCoordinator(plannerProv, plannerSess, pe.Price, plannerTools, agent.Options{
+					MaxSteps:          cfg.Agent.PlannerMaxSteps,
+					MaxStepsKey:       "agent.planner_max_steps",
+					Gate:              headlessGate,
+					ContextWindow:     pe.ContextWindow,
+					SoftCompactRatio:  cfg.Agent.SoftCompactRatio,
+					CompactRatio:      cfg.Agent.CompactRatio,
+					CompactForceRatio: cfg.Agent.CompactForceRatio,
+					CompactTarget:     cfg.Agent.CompactTarget,
+					ArchiveDir:        config.ArchiveDir(),
+					ReasoningLanguage: cfg.ReasoningLanguage(),
+				}, executor, cfg.Agent.Temperature, sink, control.TaskWarrantsPlanner)
+				label = entry.Model + " + planner " + pe.Model
+			}
 		}
 	}
+
 	if !tokenEconomy && !strings.EqualFold(strings.TrimSpace(cfg.Agent.AutoPlan), "off") && cfg.Agent.AutoPlanClassifier != "" {
 		cm := cfg.Agent.AutoPlanClassifier
 		ce, ok := cfg.ResolveModel(cm)
@@ -874,6 +939,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 
 	ctrlOpts := control.Options{
 		Runner:                 runner,
+		Orch:                   orch,
 		Executor:               executor,
 		Sink:                   sink,
 		Policy:                 policy,

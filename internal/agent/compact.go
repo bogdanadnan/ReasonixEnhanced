@@ -406,7 +406,7 @@ func (a *Agent) planCompaction(msgs []provider.Message, min int) (head, start in
 	head = a.pinnedPrefixLen(msgs)
 	if a.contextWindow > 0 {
 		budget := defaultTailTokens
-		if maxByWin := int(float64(a.contextWindow) * defaultCompactTarget); maxByWin < budget {
+		if maxByWin := int(float64(a.contextWindow) * a.compactTarget); maxByWin > budget {
 			budget = maxByWin
 		}
 		start = tailStart(msgs, head, budget, a.tokPerChar(), a.tailFloor())

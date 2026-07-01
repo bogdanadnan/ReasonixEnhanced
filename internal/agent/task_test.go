@@ -175,7 +175,7 @@ func TestTaskToolRequiresTranscriptStore(t *testing.T) {
 		{Type: provider.ChunkText, Text: "answer"},
 		{Type: provider.ChunkDone},
 	}}
-	task := NewTaskTool(sub, nil, tool.NewRegistry(), 20, 0, 0, 0, 0, 0.0, "", "sys", nil, "", "", nil)
+	task := NewTaskTool(sub, nil, tool.NewRegistry(), 20, 0, 0, 0, 0, 0, 0.0, "", "sys", nil, "", "", nil)
 
 	_, err := task.Execute(testTaskContext(), []byte(`{"prompt":"x"}`))
 	if err == nil || !strings.Contains(err.Error(), "transcript store is required") {
@@ -283,7 +283,7 @@ func TestTaskToolFailedForegroundContinuationPersistsAndRejectsReuse(t *testing.
 	store := NewSubagentStore(t.TempDir())
 	reg := tool.NewRegistry()
 	reg.Add(fakeTool{name: "read_file", readOnly: true})
-	task := NewTaskTool(sub, nil, reg, 20, 0, 0, 0, 0, 0.0, "", "sys", nil, "", "", nil).
+	task := NewTaskTool(sub, nil, reg, 20, 0, 0, 0, 0, 0, 0.0, "", "sys", nil, "", "", nil).
 		WithTranscripts(store, t.TempDir(), "base-model", "base-effort")
 
 	first, err := task.Execute(testTaskContext(), []byte(`{"prompt":"first task"}`))
@@ -363,6 +363,6 @@ func TestSubSinkForwardsUsageToParent(t *testing.T) {
 
 func newTestTaskTool(t *testing.T, prov provider.Provider, reg *tool.Registry, sysPrompt, subagentModel, subagentEffort string, resolve func(string, string) (provider.Provider, *provider.Pricing, int, error)) *TaskTool {
 	t.Helper()
-	return NewTaskTool(prov, nil, reg, 20, 0, 0, 0, 0, 0.0, "", sysPrompt, nil, subagentModel, subagentEffort, resolve).
+	return NewTaskTool(prov, nil, reg, 20, 0, 0, 0, 0, 0, 0.0, "", sysPrompt, nil, subagentModel, subagentEffort, resolve).
 		WithTranscripts(NewSubagentStore(t.TempDir()), t.TempDir(), "base-model", "base-effort")
 }

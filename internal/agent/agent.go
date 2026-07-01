@@ -26,7 +26,7 @@ import (
 // context. ~32KB is roughly 8K tokens — enough for a full file read or a busy
 // grep, while preventing one accidental "read this 5 MB log" from blowing the
 // window before the next compaction runs.
-const maxToolOutputBytes = 32 * 1024
+const maxToolOutputBytes = 128 * 1024
 
 const maxFinalReadinessBlocks = 3
 const maxEmptyFinalBlocks = 3
@@ -270,6 +270,7 @@ type Agent struct {
 	softCompactRatio    float64
 	compactRatio        float64
 	compactForceRatio   float64
+	compactTarget       float64
 	softCompactNoticed  bool
 	recentKeep          int
 	archiveDir          string
@@ -478,12 +479,13 @@ type Options struct {
 
 	// Context management. ContextWindow <= 0 disables compaction. Ratios and
 	// RecentKeep fall back to defaults when unset.
-	ContextWindow     int
-	SoftCompactRatio  float64
-	CompactRatio      float64
-	CompactForceRatio float64
-	RecentKeep        int
-	ArchiveDir        string
+	ContextWindow      int
+	SoftCompactRatio   float64
+	CompactRatio       float64
+	CompactForceRatio  float64
+	CompactTarget      float64
+	RecentKeep         int
+	ArchiveDir         string
 
 	// Hooks fires PreToolUse / PostToolUse shell hooks around tool calls. nil
 	// disables hook firing.
@@ -513,6 +515,9 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 	}
 	if opts.CompactForceRatio <= 0 {
 		opts.CompactForceRatio = defaultCompactForceRatio
+	}
+	if opts.CompactTarget <= 0 {
+		opts.CompactTarget = defaultCompactTarget
 	}
 	if opts.RecentKeep <= 0 {
 		opts.RecentKeep = minRecentKeep
@@ -551,6 +556,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		softCompactRatio:  opts.SoftCompactRatio,
 		compactRatio:      opts.CompactRatio,
 		compactForceRatio: opts.CompactForceRatio,
+		compactTarget:     opts.CompactTarget,
 		recentKeep:        opts.RecentKeep,
 		archiveDir:        opts.ArchiveDir,
 	}

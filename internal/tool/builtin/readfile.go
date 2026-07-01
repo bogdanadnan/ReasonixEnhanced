@@ -31,7 +31,7 @@ func init() { tool.RegisterBuiltin(readFile{}) }
 type readFile struct{ workDir string }
 
 const (
-	readFileDefaultLimit = 2000 // lines returned when limit is unset
+	readFileDefaultLimit = 5000 // lines returned when limit is unset
 )
 
 func (readFile) Name() string { return "read_file" }
@@ -46,7 +46,7 @@ func (readFile) Schema() json.RawMessage {
 "properties":{
   "path":{"type":"string","description":"File path"},
   "offset":{"type":"integer","description":"0-based line offset to start reading from (default 0)","minimum":0},
-  "limit":{"type":"integer","description":"Maximum lines to return (default 2000)","minimum":1}
+  "limit":{"type":"integer","description":"Maximum lines to return (default 5000)","minimum":1}
 },
 "required":["path"]
 }`)

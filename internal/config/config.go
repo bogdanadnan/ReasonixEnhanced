@@ -47,6 +47,7 @@ type Config struct {
 	Desktop           DesktopConfig           `toml:"desktop"`
 	Notifications     NotificationsConfig     `toml:"notifications"`
 	Agent             AgentConfig             `toml:"agent"`
+	Orchestrator      OrchestratorConfig      `toml:"orchestrator"`
 	Providers         []ProviderEntry         `toml:"providers"`
 	Tools             ToolsConfig             `toml:"tools"`
 	Permissions       PermissionsConfig       `toml:"permissions"`
@@ -868,9 +869,19 @@ type AgentConfig struct {
 	SoftCompactRatio  float64 `toml:"soft_compact_ratio"`
 	CompactRatio      float64 `toml:"compact_ratio"`
 	CompactForceRatio float64 `toml:"compact_force_ratio"`
+	// CompactTarget is the fraction of the context window the kept tail may occupy
+	// after compaction (e.g. 0.5 = keep at most 50%). 0 defaults to 0.5.
+	CompactTarget float64 `toml:"compact_target"`
 	// ColdResumePrune elides stale tool results when a session reopens past the
 	// provider cache window. nil = default enabled.
 	ColdResumePrune *bool `toml:"cold_resume_prune"`
+}
+
+// OrchestratorConfig controls the planner-developer-reviewer orchestrator.
+type OrchestratorConfig struct {
+	Enabled       bool   `toml:"enabled"`        // system-level toggle
+	ReviewerModel string `toml:"reviewer_model"`  // model ref for reviewer
+	MaxRetries    int    `toml:"max_retries"`     // max developer-reviewer loops per task
 }
 
 // ProviderEntry declares a model provider instance. ContextWindow is the model's
@@ -1213,16 +1224,17 @@ func Default() *Config {
 		},
 		Agent: AgentConfig{
 			SystemPrompt: DefaultSystemPrompt,
-			// 0 = no step cap: the agent loops until the model gives a final answer,
-			// the user cancels, or the provider errors. Context stays bounded by
-			// compaction, not by a round count. Set a positive agent.max_steps only
-			// if you want a hard guard against runaway.
 			MaxSteps:          0,
 			PlannerMaxSteps:   12,
 			AutoPlan:          "off",
 			SoftCompactRatio:  0.5,
 			CompactRatio:      0.8,
 			CompactForceRatio: 0.9,
+		},
+		Orchestrator: OrchestratorConfig{
+			Enabled:       false,
+			ReviewerModel: "",
+			MaxRetries:    3,
 		},
 		// Mode "ask" with no rules keeps `reasonix run` autonomous (no TTY → ask
 		// resolves to allow) while `reasonix chat` prompts before writers. Users add
@@ -1330,6 +1342,17 @@ func LoadForRoot(root string) (*Config, error) {
 		return nil, err
 	}
 	cfg.Plugins = plugins
+
+	// Same problem for [[providers]] and [desktop] provider_access: the project
+	// file overwrites the global list instead of merging. Re-merge by name across
+	// all sources so a project reasonix.toml with a few providers doesn't drop the
+	// global config's providers, and provider_access accumulates entries.
+	providers, err := mergeTOMLProviders(tomlSources)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Providers = providers
+	cfg.Desktop.ProviderAccess = mergeProviderAccess(tomlSources, cfg.Desktop.ProviderAccess)
 
 	// Claude Code's .mcp.json (project root) is read last and merged into
 	// [[plugins]], so a server configured for Claude works here unchanged.
@@ -1479,6 +1502,56 @@ func mergeTOMLPlugins(paths []string) ([]PluginEntry, error) {
 		}
 	}
 	return merged, nil
+}
+
+// mergeTOMLProviders reads each TOML file and merges [[providers]] by name so a
+// project reasonix.toml appends to the global config rather than replacing it.
+// Later files win on a name collision (same as mergeTOMLPlugins).
+func mergeTOMLProviders(paths []string) ([]ProviderEntry, error) {
+	var merged []ProviderEntry
+	index := map[string]int{}
+	for _, path := range paths {
+		if _, err := os.Stat(path); err != nil {
+			continue
+		}
+		var f Config
+		if _, err := toml.DecodeFile(path, &f); err != nil {
+			return nil, fmt.Errorf("config %s: %w", path, err)
+		}
+		for _, p := range f.Providers {
+			if i, ok := index[p.Name]; ok {
+				merged[i] = p
+				continue
+			}
+			index[p.Name] = len(merged)
+			merged = append(merged, p)
+		}
+	}
+	return merged, nil
+}
+
+// mergeProviderAccess collects [desktop] provider_access entries from all TOML
+// sources and appends them to the existing access list, deduplicating by name.
+func mergeProviderAccess(paths []string, existing []string) []string {
+	seen := desktopProviderAccessMap(existing)
+	for _, path := range paths {
+		if _, err := os.Stat(path); err != nil {
+			continue
+		}
+		var f Config
+		if _, err := toml.DecodeFile(path, &f); err != nil {
+			continue
+		}
+		for _, name := range f.Desktop.ProviderAccess {
+			name = strings.TrimSpace(name)
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			existing = append(existing, name)
+		}
+	}
+	return existing
 }
 
 // LoadForEdit returns a config to seed the `reasonix setup` wizard when reconfiguring:

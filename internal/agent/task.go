@@ -60,6 +60,7 @@ type TaskTool struct {
 	softCompactRatio  float64
 	compactRatio      float64
 	compactForceRatio float64
+	compactTarget     float64
 	temperature       float64
 	archiveDir        string
 	sysPrompt         string
@@ -81,7 +82,7 @@ type TaskTool struct {
 // deny rules still bite while autonomous sub-agents are never blocked on an
 // interactive prompt (there is no UI to answer one).
 func NewTaskTool(prov provider.Provider, pricing *provider.Pricing, parentReg *tool.Registry,
-	maxSteps, contextWindow int, softCompactRatio, compactRatio, compactForceRatio, temperature float64, archiveDir, sysPrompt string, gate Gate,
+	maxSteps, contextWindow int, softCompactRatio, compactRatio, compactForceRatio, compactTarget, temperature float64, archiveDir, sysPrompt string, gate Gate,
 	subagentModel, subagentEffort string, resolveProvider func(string, string) (provider.Provider, *provider.Pricing, int, error)) *TaskTool {
 	if sysPrompt == "" {
 		sysPrompt = DefaultTaskSystemPrompt
@@ -95,6 +96,7 @@ func NewTaskTool(prov provider.Provider, pricing *provider.Pricing, parentReg *t
 		softCompactRatio:  softCompactRatio,
 		compactRatio:      compactRatio,
 		compactForceRatio: compactForceRatio,
+		compactTarget:     compactTarget,
 		temperature:       temperature,
 		archiveDir:        archiveDir,
 		sysPrompt:         sysPrompt,
@@ -440,6 +442,7 @@ func (t *TaskTool) runSubSession(ctx context.Context, prompt string, subReg *too
 		SoftCompactRatio:  t.softCompactRatio,
 		CompactRatio:      t.compactRatio,
 		CompactForceRatio: t.compactForceRatio,
+		CompactTarget:     t.compactTarget,
 		ArchiveDir:        t.archiveDir,
 		ReasoningLanguage: ReasoningLanguageFromContext(ctx),
 	}, sink)

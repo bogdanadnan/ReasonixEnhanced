@@ -120,6 +120,42 @@ export const initialState: State = {
   seq: 0,
 };
 
+// MAX_VISIBLE_USER_TURNS caps how many user turns' worth of items the frontend
+// keeps in state. Older items are dropped so array spreads in the reducer and
+// React reconciliation stay bounded regardless of actual session length. The
+// full log still lives in the Go kernel and reaches the model untouched — this
+// is a UI-memory cap, not a prompt truncation.
+const MAX_VISIBLE_USER_TURNS = 3;
+
+// capItems slices items to the last N user turns when it exceeds the limit.
+// Must preserve the trailing in-progress turn (streaming assistant, running
+// tools) so the cap is always at a user-message boundary, never mid-turn.
+function capItems(items: Item[]): Item[] {
+  let userCount = 0;
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].kind === "user") {
+      userCount++;
+      if (userCount >= MAX_VISIBLE_USER_TURNS) {
+        // Drop items older than this user message. If the oldest kept item is a
+        // compaction, keep it as a marker that history was collapsed.
+        const start = i;
+        // Walk forward to include any preceding compaction marker so the user
+        // sees that earlier context was folded.
+        let keepFrom = start;
+        for (let j = start - 1; j >= 0; j--) {
+          if (items[j].kind === "compaction") {
+            keepFrom = j;
+          } else {
+            break;
+          }
+        }
+        return items.slice(keepFrom);
+      }
+    }
+  }
+  return items;
+}
+
 function usageTotalTokens(usage?: WireUsage): number {
   if (!usage) return 0;
   if (usage.totalTokens > 0) return usage.totalTokens;
@@ -542,7 +578,7 @@ function applyEvent(s: State, e: WireEvent): State {
         return it;
       });
       let items: Item[] = e.err ? [...finalized, { kind: "notice", id: `e${s.seq}`, level: "warn", text: e.err }] : finalized;
-      return { ...s, items, live: undefined, running: false, turnActive: false, currentAssistant: undefined, approval: undefined, ask: undefined, seq: s.seq + 1 };
+      return { ...s, items: capItems(items), live: undefined, running: false, turnActive: false, currentAssistant: undefined, approval: undefined, ask: undefined, seq: s.seq + 1 };
     }
     default: return s;
   }
@@ -555,7 +591,7 @@ export function reducer(s: State, a: Action): State {
       return {
         ...s,
         seq: seq + 1,
-        items: [...s.items, { kind: "user", id: `u${seq}`, text: a.text }],
+        items: capItems([...s.items, { kind: "user", id: `u${seq}`, text: a.text }]),
         running: true,
         turnStartAt: Date.now(),
         turnTokens: 0,
@@ -613,7 +649,7 @@ export function reducer(s: State, a: Action): State {
         if (shortArgs === t.args && (t.output === undefined || t.output === "")) return it;
         return { ...t, args: shortArgs, output: undefined, dataArchived: true };
       });
-      return { ...s, items: archived, seq };
+      return { ...s, items: capItems(archived), seq };
     }
     case "local_notice": return { ...s, running: false, turnActive: false, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `n${s.seq}`, level: a.level, text: a.text }] };
     case "clearApproval": return { ...s, approval: undefined };

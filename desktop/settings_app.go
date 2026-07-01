@@ -80,6 +80,25 @@ type AgentView struct {
 	SystemPrompt      string  `json:"systemPrompt"`
 	ColdResumePrune   bool    `json:"coldResumePrune"`
 	ReasoningLanguage string  `json:"reasoningLanguage"`
+	CompactTarget     float64 `json:"compactTarget"`
+	CompactRatio      float64 `json:"compactRatio"`
+}
+
+const defaultCompactTarget = 0.5
+const defaultCompactRatio = 0.8
+
+func compactTargetOrDefault(v float64) float64 {
+	if v <= 0 {
+		return defaultCompactTarget
+	}
+	return v
+}
+
+func compactRatioOrDefault(v float64) float64 {
+	if v <= 0 {
+		return defaultCompactRatio
+	}
+	return v
 }
 
 type BotAllowlistView struct {
@@ -330,7 +349,7 @@ func (a *App) Settings() SettingsView {
 				Deny:  []string{},
 			},
 			Sandbox:            SandboxView{Bash: "enforce", AllowWrite: []string{}, Shell: "auto"},
-			Agent:              AgentView{PlannerMaxSteps: 12, ColdResumePrune: true, ReasoningLanguage: "auto"},
+			Agent:              AgentView{PlannerMaxSteps: 12, ColdResumePrune: true, ReasoningLanguage: "auto", CompactTarget: 0.5, CompactRatio: 0.8},
 			Bot:                botSettingsView(config.BotConfig{}),
 			AutoPlan:           "off",
 			DesktopLayoutStyle: "classic",
@@ -386,7 +405,16 @@ func (a *App) Settings() SettingsView {
 				Password: cfg.Network.Proxy.Password,
 			},
 		},
-		Agent:              AgentView{Temperature: cfg.Agent.Temperature, MaxSteps: cfg.Agent.MaxSteps, PlannerMaxSteps: cfg.Agent.PlannerMaxSteps, SystemPrompt: cfg.Agent.SystemPrompt, ColdResumePrune: cfg.ColdResumePruneEnabled(), ReasoningLanguage: cfg.ReasoningLanguage()},
+		Agent:              AgentView{
+			Temperature:       cfg.Agent.Temperature,
+			MaxSteps:          cfg.Agent.MaxSteps,
+			PlannerMaxSteps:   cfg.Agent.PlannerMaxSteps,
+			SystemPrompt:      cfg.Agent.SystemPrompt,
+			ColdResumePrune:   cfg.ColdResumePruneEnabled(),
+			ReasoningLanguage: cfg.ReasoningLanguage(),
+			CompactTarget:     compactTargetOrDefault(cfg.Agent.CompactTarget),
+			CompactRatio:      compactRatioOrDefault(cfg.Agent.CompactRatio),
+		},
 		Bot:                botSettingsView(cfg.Bot),
 		DesktopLanguage:    cfg.DesktopLanguage(),
 		DesktopLayoutStyle: cfg.DesktopLayoutStyle(),
@@ -1528,6 +1556,14 @@ func (a *App) SetAgentParams(temperature float64, maxSteps int, plannerMaxSteps 
 
 func (a *App) SetColdResumePrune(enabled bool) error {
 	return a.applyConfigChange(func(c *config.Config) error { return c.SetColdResumePrune(enabled) })
+}
+
+func (a *App) SetCompactTarget(v float64) error {
+	return a.applyConfigChange(func(c *config.Config) error { return c.SetCompactTarget(v) })
+}
+
+func (a *App) SetCompactRatio(v float64) error {
+	return a.applyConfigChange(func(c *config.Config) error { return c.SetCompactRatio(v) })
 }
 
 func (a *App) SetReasoningLanguage(lang string) error {

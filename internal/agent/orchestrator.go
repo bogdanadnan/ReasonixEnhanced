@@ -1,0 +1,491 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+
+	"reasonix/internal/provider"
+	"reasonix/internal/tool"
+
+	"log/slog"
+)
+
+// Orchestrator coordinates a planner → developer → reviewer workflow across
+// three agent models. The planner produces a plan file, feeds tasks one at a
+// time to the developer, and the reviewer gates each result. Models communicate
+// via files (plan.md, workload_brief.md, review_N.md) plus short JSON status
+// responses the orchestrator parses.
+//
+// Lifecycle: Orchestrator.Run(ctx, userInput) drives the full cycle within one
+// user turn. Progress is persisted to state.json after each step so a crashed
+// session can resume.
+type Orchestrator struct {
+	planner    *Agent
+	developer  *Agent
+	reviewer   *Agent
+
+	orchDir    string  // session-scoped directory for orchestration files
+	maxRetries int
+
+	state *OrchState
+	mu    sync.Mutex
+}
+
+// OrchState is the orchestrator's progress, persisted to state.json.
+type OrchState struct {
+	Phase   int         `json:"phase"`   // 1-based current phase index
+	Task    int         `json:"task"`    // 1-based current task index within phase
+	Phases  []OrchPhase `json:"phases"`  // plan tree
+	Retries int         `json:"retries"` // retries for the current task
+	Status  string      `json:"status"`  // planning | developing | reviewing | done
+}
+
+// OrchPhase is one phase of the plan.
+type OrchPhase struct {
+	Name  string   `json:"name"`
+	Tasks []string `json:"tasks"`
+	Done  []string `json:"done"`
+}
+
+// OrchestratorOptions configures a new Orchestrator.
+type OrchestratorOptions struct {
+	Planner    *Agent
+	Developer  *Agent
+	Reviewer   *Agent
+	OrchDir    string
+	MaxRetries int
+}
+
+// NewOrchestrator creates an orchestrator. Callers must ensure all three agents
+// are fully constructed with their own sessions, tools, and sinks.
+func NewOrchestrator(opts OrchestratorOptions) *Orchestrator {
+	if opts.MaxRetries <= 0 {
+		opts.MaxRetries = 3
+	}
+	return &Orchestrator{
+		planner:    opts.Planner,
+		developer:  opts.Developer,
+		reviewer:   opts.Reviewer,
+		orchDir:    opts.OrchDir,
+		maxRetries: opts.MaxRetries,
+	}
+}
+
+// Run drives the full orchestration cycle. It blocks until all phases complete
+// or the context is cancelled.
+func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
+	slog.Info("orchestrator: starting", "orchDir", o.orchDir)
+	if err := os.MkdirAll(o.orchDir, 0o755); err != nil {
+		return fmt.Errorf("orchestrator: create orch dir: %w", err)
+	}
+
+	// Phase: Planning
+	if err := o.runPlanning(ctx, userInput); err != nil {
+		return fmt.Errorf("orchestrator: planning phase: %w", err)
+	}
+
+	// Phase: Development loop
+	for !o.isDone() {
+		if err := o.runTaskCycle(ctx); err != nil {
+			return fmt.Errorf("orchestrator: task cycle: %w", err)
+		}
+	}
+
+	slog.Info("orchestrator: done")
+	return nil
+}
+
+func (o *Orchestrator) isDone() bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.state == nil {
+		return false
+	}
+	return o.state.Status == "done"
+}
+
+func (o *Orchestrator) statePath() string {
+	return filepath.Join(o.orchDir, "state.json")
+}
+
+func (o *Orchestrator) planPath() string {
+	return filepath.Join(o.orchDir, "plan.md")
+}
+
+func (o *Orchestrator) briefPath() string {
+	return filepath.Join(o.orchDir, "workload_brief.md")
+}
+
+func (o *Orchestrator) donePath() string {
+	return filepath.Join(o.orchDir, "workload_done.md")
+}
+
+func (o *Orchestrator) reviewPath(n int) string {
+	return filepath.Join(o.orchDir, fmt.Sprintf("review_%d.md", n))
+}
+
+// saveState persists the current state to state.json.
+func (o *Orchestrator) saveState() error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.state == nil {
+		return nil
+	}
+	b, err := json.MarshalIndent(o.state, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(o.statePath(), b, 0o644)
+}
+
+// State returns a copy of the current orchestrator state (thread-safe).
+func (o *Orchestrator) State() *OrchState {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.state == nil {
+		return nil
+	}
+	cp := *o.state
+	return &cp
+}
+
+// OrchDir returns the orchestrator working directory.
+func (o *Orchestrator) OrchDir() string { return o.orchDir }
+
+// ReviewPath returns the path for review_N.md.
+func (o *Orchestrator) ReviewPath(n int) string { return o.reviewPath(n) }
+
+// Stubs — to be implemented in later phases.
+
+func (o *Orchestrator) runPlanning(ctx context.Context, userInput string) error {
+	slog.Info("orchestrator: planning phase")
+	prompt := fmt.Sprintf(`You are the Planner in a developer orchestrator. Given the user's request,
+create a detailed implementation plan. First explore the codebase with
+read_file, glob, and grep to understand the existing structure, then write
+the plan to %s using ## for phases and - [ ] for individual tasks.
+Each task should be concrete and implementable in one developer session.
+
+When done, respond with ONLY valid JSON (no markdown fences, no extra text):
+{"phase_count": N, "task_count": M}
+
+User request:
+%s`, o.planPath(), userInput)
+
+	if err := o.planner.Run(ctx, prompt); err != nil {
+		return fmt.Errorf("planner: %w", err)
+	}
+
+	// Parse planners structured response
+	text := o.lastAssistantText(o.planner)
+	var planResult struct {
+		PhaseCount int `json:"phase_count"`
+		TaskCount  int `json:"task_count"`
+	}
+	if err := o.parseStructured(text, &planResult); err != nil {
+		return fmt.Errorf("planner response: %w", err)
+	}
+
+	// Parse the plan file the planner wrote
+	phases, err := parsePlan(o.planPath())
+	if err != nil {
+		return fmt.Errorf("parse plan: %w", err)
+	}
+
+	slog.Info("orchestrator: plan parsed", "phases", len(phases), "tasks", planResult.TaskCount)
+
+	o.mu.Lock()
+	o.state = &OrchState{Phase: 1, Task: 1, Phases: phases, Status: "developing"}
+	o.mu.Unlock()
+	return o.saveState()
+}
+
+func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
+	o.mu.Lock()
+	if o.state == nil || len(o.state.Phases) == 0 {
+		o.mu.Unlock()
+		return fmt.Errorf("no plan loaded")
+	}
+	state := *o.state // shallow copy for this cycle
+	o.mu.Unlock()
+
+	// Find current task
+	if state.Phase < 1 || state.Phase > len(state.Phases) {
+		return fmt.Errorf("phase index %d out of range", state.Phase)
+	}
+	phase := state.Phases[state.Phase-1]
+	if state.Task < 1 || state.Task > len(phase.Tasks) {
+		return fmt.Errorf("task index %d out of range in phase %q", state.Task, phase.Name)
+	}
+	taskName := phase.Tasks[state.Task-1]
+	if o.isTaskDone(phase, taskName) {
+		return o.advanceTask(ctx)
+	}
+
+	// --- DEVELOPING ---
+	slog.Info("orchestrator: developing", "phase", state.Phase, "task", state.Task, "name", taskName)
+	state.Status = "developing"
+	o.mu.Lock()
+	o.state = &state
+	o.mu.Unlock()
+	o.saveState()
+
+	brief := fmt.Sprintf("Implement this task from the plan:\n\n**%s**\n\nPhase: %s\nTask %d of %d",
+		taskName, phase.Name, state.Task, len(phase.Tasks))
+	if err := writeBrief(o.briefPath(), brief); err != nil {
+		return err
+	}
+
+	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nRead existing code with read_file before editing. Run build/tests with bash after changes.\n\nIf there is a review history, address any issues from the latest review_N.md.\n\nWhen done, write a completion summary to %s and respond with:\n{\"status\": \"done\", \"summary\": \"...\"}",
+		o.briefPath(), o.donePath())
+	if err := o.developer.Run(ctx, devPrompt); err != nil {
+		return fmt.Errorf("developer: %w", err)
+	}
+
+	// --- REVIEWING ---
+	state.Status = "reviewing"
+	o.mu.Lock()
+	o.state = &state
+	o.mu.Unlock()
+	o.saveState()
+
+	reviewPath := o.reviewPath(state.Task)
+	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Review the work the developer just completed.
+Read:
+  1. The workload brief at %s
+  2. The developer's completion at %s
+  3. The actual code changes using bash: git diff
+
+Write your review to %s with this format:
+## Verdict: PASS or FAIL
+## Summary
+Brief summary of your assessment.
+## Issues (if FAIL)
+1. Issue description
+2. Issue description
+
+After writing the review file, respond with ONLY valid JSON:
+{"status": "pass", "summary": "..."} or {"status": "fail", "issues": N, "summary": "..."}`,
+		o.briefPath(), o.donePath(), reviewPath)
+
+	if err := o.reviewer.Run(ctx, reviewPrompt); err != nil {
+		return fmt.Errorf("reviewer: %w", err)
+	}
+
+	// Parse reviewer verdict
+	text := o.lastAssistantText(o.reviewer)
+	var verdict struct {
+		Status  string `json:"status"`
+		Issues  int    `json:"issues"`
+		Summary string `json:"summary"`
+	}
+	if err := o.parseStructured(text, &verdict); err != nil {
+		return fmt.Errorf("reviewer response: %w", err)
+	}
+
+	if verdict.Status == "pass" {
+		slog.Info("orchestrator: review pass", "task", taskName)
+		return o.advanceTask(ctx)
+	}
+
+	// Review fail — retry if budget remains
+	state.Retries++
+	slog.Info("orchestrator: review fail", "task", taskName, "retries", state.Retries, "issues", verdict.Issues)
+	if state.Retries <= o.maxRetries {
+		o.mu.Lock()
+		o.state = &state
+		o.mu.Unlock()
+		o.saveState()
+		return nil // loop back to developing (caller re-enters runTaskCycle)
+	}
+
+	// Retries exhausted — skip task
+	slog.Warn("orchestrator: retries exhausted, skipping task", "task", taskName)
+	return o.advanceTask(ctx)
+}
+
+func (o *Orchestrator) advanceTask(ctx context.Context) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.state == nil {
+		return nil
+	}
+	phase := &o.state.Phases[o.state.Phase-1]
+	taskName := phase.Tasks[o.state.Task-1]
+	phase.Done = append(phase.Done, taskName)
+	o.state.Task++
+	o.state.Retries = 0
+
+	if o.state.Task > len(phase.Tasks) {
+		// Phase complete — move to next phase
+		o.state.Phase++
+		if o.state.Phase > len(o.state.Phases) {
+			o.state.Status = "done"
+			slog.Info("orchestrator: all phases complete")
+		} else {
+			o.state.Task = 1
+			slog.Info("orchestrator: phase complete", "phase", o.state.Phase-1)
+		}
+	}
+	return o.saveState()
+}
+
+// --- helpers ---
+
+func (o *Orchestrator) isTaskDone(phase OrchPhase, task string) bool {
+	for _, d := range phase.Done {
+		if d == task {
+			return true
+		}
+	}
+	return false
+}
+
+func (o *Orchestrator) lastAssistantText(agent *Agent) string {
+	msgs := agent.Session().Snapshot()
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == provider.RoleAssistant && strings.TrimSpace(msgs[i].Content) != "" {
+			return strings.TrimSpace(msgs[i].Content)
+		}
+	}
+	return ""
+}
+
+func (o *Orchestrator) parseStructured(text string, target interface{}) error {
+	text = strings.TrimSpace(text)
+	// Strip markdown code fences if present
+	if strings.HasPrefix(text, "```") {
+		text = strings.TrimPrefix(text, "```json")
+		text = strings.TrimPrefix(text, "```")
+		if idx := strings.LastIndex(text, "```"); idx >= 0 {
+			text = text[:idx]
+		}
+		text = strings.TrimSpace(text)
+	}
+	if err := json.Unmarshal([]byte(text), target); err != nil {
+		return fmt.Errorf("invalid JSON response (expected key/value pairs like {\"status\":\"done\"}): %w", err)
+	}
+	return nil
+}
+
+// --- Phase 2: plan parsing + state persistence ---
+
+// parsePlan reads a plan.md file and returns its phases with tasks.
+// Format expected: ## Phase N: Name followed by - [ ] or - [x] task items.
+func parsePlan(path string) ([]OrchPhase, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read plan: %w", err)
+	}
+	lines := strings.Split(string(data), "\n")
+	var phases []OrchPhase
+	var cur *OrchPhase
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "## ") {
+			name := strings.TrimPrefix(line, "## ")
+			phases = append(phases, OrchPhase{Name: name})
+			cur = &phases[len(phases)-1]
+			continue
+		}
+		if cur == nil {
+			continue
+		}
+		if strings.HasPrefix(line, "- [ ]") || strings.HasPrefix(line, "- [x]") {
+			task := strings.TrimPrefix(strings.TrimPrefix(line, "- [ ]"), "- [x]")
+			task = strings.TrimPrefix(task, " ")
+			if strings.HasPrefix(line, "- [x]") {
+				cur.Done = append(cur.Done, task)
+			}
+			cur.Tasks = append(cur.Tasks, task)
+		}
+	}
+	if len(phases) == 0 {
+		return nil, fmt.Errorf("plan.md contains no ## Phase headings")
+	}
+	return phases, nil
+}
+
+// loadState reads orchestrator progress from state.json.
+func loadState(path string) (*OrchState, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var state OrchState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, fmt.Errorf("parse state.json: %w", err)
+	}
+	return &state, nil
+}
+
+// writeBrief writes a workload brief to the given path.
+func writeBrief(path, content string) error {
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+// readReview extracts the pass/fail verdict from a review_N.md file.
+func readReviewVerdict(path string) (pass bool, summary string, _ error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, "", fmt.Errorf("read review: %w", err)
+	}
+	text := string(data)
+	pass = strings.Contains(text, "## Verdict: PASS") || strings.Contains(text, "Verdict: PASS")
+	// Extract summary — the ## Summary section
+	if idx := strings.Index(text, "## Summary"); idx >= 0 {
+		rest := strings.TrimLeft(text[idx+len("## Summary"):], "\n\r ")
+		if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
+			summary = strings.TrimSpace(rest[:nl])
+		} else {
+			summary = strings.TrimSpace(rest)
+		}
+	}
+	return pass, summary, nil
+}
+
+// Ensure these unused imports compile away — remove when they're actually used.
+var (
+	_ = provider.Message{}
+	_ = tool.Tool(nil)
+)
+
+// ReviewerSystemPrompt returns the system prompt for the reviewer agent.
+func ReviewerSystemPrompt() string {
+	return `You are a code reviewer in a developer orchestrator. Review the work
+the developer just completed against the task brief. Be thorough but concise:
+check correctness, edge cases, error handling, and adherence to the task.
+
+Use bash to run git diff and git log to see what changed. Read modified files
+with read_file. Do NOT make edits yourself — only review and report findings.
+
+Write your review to the file path given in the prompt, then respond with a
+JSON object containing your verdict.`
+}
+
+// ReviewerToolRegistry returns the tool set for the reviewer: read-only tools
+// plus bash (for git diff, git log, build verification).
+func ReviewerToolRegistry(parent *tool.Registry) *tool.Registry {
+	reg := FilterReadOnlyRegistry(parent, reviewerNonResearchTools...)
+	// Also add bash explicitly (it's not read-only, but the reviewer needs git diff/build)
+	if bash, ok := parent.Get("bash"); ok {
+		reg.Add(bash)
+	}
+	return reg
+}
+
+// reviewer tools explicitly excluded from the read-only set
+var reviewerNonResearchTools = []string{
+	"bash_output", "kill_shell", "wait", // background job tools
+	"task", "run_skill", "read_skill", "install_skill", "install_source", // agent/skill management
+	"explore", "research", "review", "security_review", // sub-agent tools
+	"history", // session history
+	"todo_write", "complete_step", "exit_plan_mode", // workflow
+	"ask", // user interaction
+	"remember", "forget", "memory", // memory
+	"slash_command", // command expansion
+}

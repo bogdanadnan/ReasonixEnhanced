@@ -2715,13 +2715,56 @@ func (a *App) History() []HistoryMessage {
 	return a.HistoryForTab("")
 }
 
+// maxHistoryUserTurns caps how many user turns' worth of messages the desktop
+// frontend receives on session load. Older messages are dropped so the bridge
+// never serializes megabytes of JSON for long sessions. The full log still
+// lives in the kernel and reaches the model untouched — this is a UI-transfer
+// cap, not a prompt truncation.
+const maxHistoryUserTurns = 3
+
 func (a *App) HistoryForTab(tabID string) []HistoryMessage {
 	ctrl := a.ctrlByTabID(tabID)
 	if ctrl == nil {
 		return []HistoryMessage{}
 	}
 	msgs := ctrl.History()
+	// Truncate to the last N user turns on the Go side so the bridge never sends
+	// more than needed. The JS-side capItems is defense-in-depth for streaming.
+	msgs = tailMessagesByUserTurns(msgs, maxHistoryUserTurns)
 	return historyMessages(msgs, sessionDisplayResolver(controllerSessionDir(ctrl), ctrl.SessionPath()))
+}
+
+// tailMessagesByUserTurns returns only the trailing messages that belong to the
+// last n user turns (plus any preceding compaction markers so the UI can show
+// that history was folded). When the session has fewer than n turns, all
+// messages are returned unchanged.
+func tailMessagesByUserTurns(msgs []provider.Message, n int) []provider.Message {
+	if len(msgs) == 0 || n <= 0 {
+		return msgs
+	}
+	userCount := 0
+	cutIdx := 0
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == provider.RoleUser {
+			userCount++
+			if userCount >= n {
+				cutIdx = i
+				break
+			}
+		}
+	}
+	if cutIdx == 0 {
+		return msgs // fewer than n user turns
+	}
+	// Walk backward from cutIdx to include any preceding compaction markers.
+	for i := cutIdx - 1; i >= 0; i-- {
+		if strings.Contains(msgs[i].Content, "<compaction-summary>") {
+			cutIdx = i
+		} else {
+			break
+		}
+	}
+	return msgs[cutIdx:]
 }
 
 func historyMessages(msgs []provider.Message, resolveUserContent func(string) string) []HistoryMessage {
@@ -6196,4 +6239,33 @@ func (a *App) ConnectKey(apiKey string) error {
 		a.mu.Unlock()
 	}
 	return nil
+}
+
+// --- Orchestrator bridge methods ---
+
+// OrchState returns the current orchestrator progress or nil if orchestration is not active.
+func (a *App) OrchState() *agent.OrchState {
+	ctrl := a.activeCtrlLocked()
+	if ctrl == nil {
+		return nil
+	}
+	return ctrl.OrchState()
+}
+
+// OrchPlanContent returns the contents of the orchestrator plan.md file.
+func (a *App) OrchPlanContent() string {
+	ctrl := a.activeCtrlLocked()
+	if ctrl == nil {
+		return ""
+	}
+	return ctrl.OrchPlanContent()
+}
+
+// OrchReviewContent returns the contents of review_N.md.
+func (a *App) OrchReviewContent(n int) string {
+	ctrl := a.activeCtrlLocked()
+	if ctrl == nil {
+		return ""
+	}
+	return ctrl.OrchReviewContent(n)
 }

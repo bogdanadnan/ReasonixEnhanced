@@ -60,6 +60,7 @@ var ErrTurnRunning = errors.New("turn already running")
 // methods; observe through the Sink passed in Options.
 type Controller struct {
 	runner   agent.Runner
+	orch    *agent.Orchestrator // non-nil when orchestrator mode is active
 	executor *agent.Agent
 	sink     event.Sink
 	policy   permission.Policy
@@ -227,6 +228,7 @@ type RememberResult struct {
 // to frontends that resolve MCP prompts and slash commands.
 type Options struct {
 	Runner        agent.Runner
+	Orch          *agent.Orchestrator // non-nil when orchestrator mode
 	Executor      *agent.Agent
 	Sink          event.Sink
 	Policy        permission.Policy
@@ -292,6 +294,7 @@ func New(opts Options) *Controller {
 	}
 	c := &Controller{
 		runner:                 opts.Runner,
+		orch:                   opts.Orch,
 		executor:               opts.Executor,
 		sink:                   sink,
 		policy:                 opts.Policy,
@@ -3363,4 +3366,36 @@ func (c *Controller) emitRememberResult(r RememberResult) {
 	case strings.TrimSpace(r.CoveredBy) != "":
 		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: fmt.Sprintf(i18n.M.PermissionAlreadyAllowedFmt, r.Path, r.CoveredBy)})
 	}
+}
+
+// OrchState returns the orchestrator state, or nil when not in orchestrator mode.
+func (c *Controller) OrchState() *agent.OrchState {
+	if c.orch == nil {
+		return nil
+	}
+	return c.orch.State()
+}
+
+// OrchPlanContent returns the plan.md content, or "" when not in orchestrator mode.
+func (c *Controller) OrchPlanContent() string {
+	if c.orch == nil {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(c.orch.OrchDir(), "plan.md"))
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// OrchReviewContent returns the review_N.md content, or "" if not found.
+func (c *Controller) OrchReviewContent(n int) string {
+	if c.orch == nil {
+		return ""
+	}
+	data, err := os.ReadFile(c.orch.ReviewPath(n))
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }

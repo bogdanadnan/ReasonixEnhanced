@@ -1364,6 +1364,36 @@ function stepLimitLabel(value: number, t: ReturnType<typeof useT>): string {
   return value === 0 ? t("settings.stepLimit.unlimited") : String(value);
 }
 
+function PercentControl({
+  value,
+  busy,
+  onChange,
+}: {
+  value: number;
+  busy: boolean;
+  onChange: (value: number) => void;
+}) {
+  const percent = Math.round(value * 100);
+  const presets = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+  return (
+    <div className="step-limit-control">
+      <div className="set-seg">
+        {presets.map((pct) => (
+          <button
+            key={pct}
+            type="button"
+            className={`set-seg__btn${percent === pct ? " set-seg__btn--on" : ""}`}
+            disabled={busy}
+            onClick={() => onChange(pct / 100)}
+          >
+            {pct}%
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function NetworkSection({ s, busy, apply }: SectionProps) {
   const t = useT();
   const savedNetwork = normalizeNetworkView(s.network);
@@ -2914,6 +2944,20 @@ function ModelsSection({ s, busy, apply, backgroundApply }: ModelsSectionProps) 
             {modelIssue && <div className="provider-fetch-banner provider-fetch-banner--warn">{modelIssue}</div>}
           </SettingsSection>
           <SettingsSection title={t("settings.agentRuntime")} description={t("settings.agentRuntimeHint")}>
+            <SettingsField label={t("settings.compactTarget")} hint={t("settings.compactTargetHint")}>
+              <PercentControl
+                value={agent.compactTarget}
+                busy={busy}
+                onChange={(next) => void apply(() => app.SetCompactTarget(next))}
+              />
+            </SettingsField>
+            <SettingsField label={t("settings.compactRatio")} hint={t("settings.compactRatioHint")}>
+              <PercentControl
+                value={agent.compactRatio}
+                busy={busy}
+                onChange={(next) => void apply(() => app.SetCompactRatio(next))}
+              />
+            </SettingsField>
             <SettingsField label={t("settings.executorMaxSteps")} hint={t("settings.executorMaxStepsHint")}>
               <StepLimitControl
                 value={agent.maxSteps}

@@ -36,6 +36,7 @@ import { playSuccessChime } from "./lib/sound";
 import { Transcript } from "./components/Transcript";
 import { Composer } from "./components/Composer";
 import { TodoPanel } from "./components/TodoPanel";
+import { OrchestratorPanel } from "./components/OrchestratorPanel";
 import { ApprovalModal } from "./components/ApprovalModal";
 import { AskCard } from "./components/AskCard";
 import { UndoRewindBanner } from "./components/UndoRewindBanner";
@@ -1591,9 +1592,27 @@ export default function App() {
     [applyGoal, closeTransientOverlays, collaborationMode, composerProfile, goal, send, runShell, notice, setControllerCollaborationMode, setControllerGoal, setControllerToolApprovalMode, steer, switchModel, t, toolApprovalMode],
   );
 
+  const tabMetasRef = useRef<TabMeta[]>([]);
   const refreshTabMetas = useCallback(async (): Promise<TabMeta[]> => {
     const tabs = asArray(await app.ListTabs().catch(() => [] as TabMeta[]));
-    setTabMetas(tabs);
+    // Only update when tabs actually changed to avoid unnecessary re-renders.
+    const prev = tabMetasRef.current;
+    if (tabs.length !== prev.length) {
+      setTabMetas(tabs);
+      tabMetasRef.current = tabs;
+    } else {
+      let changed = false;
+      for (let i = 0; i < tabs.length; i++) {
+        if (tabs[i].id !== prev[i].id || tabs[i].active !== prev[i].active || tabs[i].running !== prev[i].running || tabs[i].label !== prev[i].label) {
+          changed = true;
+          break;
+        }
+      }
+      if (changed) {
+        setTabMetas(tabs);
+        tabMetasRef.current = tabs;
+      }
+    }
     return tabs;
   }, []);
 
@@ -1612,7 +1631,7 @@ export default function App() {
 
   useEffect(() => {
     void refreshTabMetas();
-    const id = window.setInterval(() => void refreshTabMetas(), 2000);
+    const id = window.setInterval(() => void refreshTabMetas(), 60000);
     return () => window.clearInterval(id);
   }, [refreshTabMetas]);
 
@@ -2923,6 +2942,7 @@ export default function App() {
           {!sidebarImDetailConnection && (
           <footer className="footer" ref={footerRef}>
             {showTodos && <TodoPanel todos={todos} onDismiss={() => setDismissedTodo(todoKey)} />}
+            <OrchestratorPanel active={state.meta?.ready === true} />
             {rewindState && (
               <UndoRewindBanner
                 meta={{

@@ -41,6 +41,7 @@ import type {
   Meta,
   ModelInfo,
   NetworkView,
+  OrchState,
   ProjectNode,
   PromptHistoryEntry,
   PromptHistoryResult,
@@ -264,6 +265,11 @@ export interface AppBindings {
   MigrateDesktopPreferences(language: string, theme: string, style: string): Promise<void>;
   SetAgentParams(temperature: number, maxSteps: number, plannerMaxSteps: number, systemPrompt: string): Promise<void>;
   SetColdResumePrune(enabled: boolean): Promise<void>;
+  SetCompactTarget(v: number): Promise<void>;
+  SetCompactRatio(v: number): Promise<void>;
+  OrchState(): Promise<OrchState | null>;
+  OrchPlanContent(): Promise<string>;
+  OrchReviewContent(n: number): Promise<string>;
   SetReasoningLanguage(lang: string): Promise<void>;
   SetTrayLocale(locale: "en" | "zh" | "zh-TW"): Promise<void>;
   // SetBypass is the legacy Wails name for YOLO/full-access tool auto-approval
@@ -772,7 +778,7 @@ function makeMockApp(): AppBindings {
       noProxy: "",
       proxy: { type: "socks5", server: "127.0.0.1", port: 7890, username: "", password: "" },
     },
-    agent: { temperature: 0.2, maxSteps: 0, plannerMaxSteps: 12, systemPrompt: "You are Reasonix, a coding agent.", coldResumePrune: true, reasoningLanguage: "auto" },
+    agent: { temperature: 0.2, maxSteps: 0, plannerMaxSteps: 12, systemPrompt: "You are Reasonix, a coding agent.", coldResumePrune: true, reasoningLanguage: "auto", compactTarget: 0.5, compactRatio: 0.8 },
     bot: {
       enabled: !freshMock,
       model: "",
@@ -2562,6 +2568,15 @@ function makeMockApp(): AppBindings {
     async SetColdResumePrune(enabled: boolean) {
       settings.agent = { ...settings.agent, coldResumePrune: enabled };
     },
+    async SetCompactTarget(v: number) {
+      settings.agent = { ...settings.agent, compactTarget: v };
+    },
+    async SetCompactRatio(v: number) {
+      settings.agent = { ...settings.agent, compactRatio: v };
+    },
+    async OrchState(): Promise<OrchState | null> { return null; },
+    async OrchPlanContent(): Promise<string> { return ""; },
+    async OrchReviewContent(_n: number): Promise<string> { return ""; },
     async SetReasoningLanguage(lang: string) {
       const normalized = lang === "zh" || lang === "en" ? lang : "auto";
       settings.agent = { ...settings.agent, reasoningLanguage: normalized };

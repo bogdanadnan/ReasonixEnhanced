@@ -4470,9 +4470,11 @@ a[href] {
   font-size: var(--font-content);
   line-height: 1.55;
   min-height: calc(var(--font-content) * 1.55);
+  max-height: min(40vh, 500px);
   outline: none;
-  overflow-y: hidden;
+  overflow-y: auto;
   scrollbar-width: none;           /* Firefox */
+  field-sizing: content;           /* auto-height without JS — Safari 17.4+ / WebKit 17.4+ */
 }
 .composer__input::-webkit-scrollbar {
   display: none;                    /* Chrome / Safari / Wails webview */

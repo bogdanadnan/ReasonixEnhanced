@@ -1,12 +1,11 @@
-import { memo, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, FileText, Folder, GitBranch, Image, MessageSquare, RotateCcw, ScrollText } from "lucide-react";
+import { memo, useEffect, useState } from "react";
+import { ChevronDown, FileText, Folder, GitBranch, Image, MessageSquare, RotateCcw, ScrollText } from "lucide-react";
 import { Markdown } from "./Markdown";
 import { CopyButton } from "./CopyButton";
 import { ProcessBrainIcon } from "./ProcessCard";
 import { parseAttachmentRefsForDisplay, sortDisplayAttachments } from "../lib/attachmentDisplay";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
-import { useGSAPCollapse } from "../lib/useGSAPCollapse";
 import { displayReasoningText } from "../lib/reasoningDisplay";
 import type { Item, MessageActionScope } from "../lib/useController";
 import type { CheckpointMeta } from "../lib/types";
@@ -338,90 +337,28 @@ export function TurnActions({
 
 export const AssistantMessage = memo(function AssistantMessage({
   item,
-  defaultExpanded = false,
-  expandWhileStreaming = true,
-  truncateStreamingReasoning = false,
 }: {
   item: AssistantItem;
-  defaultExpanded?: boolean;
-  /** false in compact mode: completed steps fold away, so auto-open + fold reads as flicker. */
-  expandWhileStreaming?: boolean;
-  /** Opt-in for compact mode to keep live DeepSeek reasoning from growing an unbounded DOM. */
-  truncateStreamingReasoning?: boolean;
 }) {
   const t = useT();
-  const reasoningBodyRef = useRef<HTMLDivElement>(null);
-  // Thinking streams in before the answer — show it live while the model is still
-  // working, then it stays available behind the toggle once the answer arrives.
-  const [reasoningOpen, setReasoningOpen] = useState((expandWhileStreaming && item.streaming) || defaultExpanded);
-  const userOverridden = useRef(false);
-  const prevStreamingRef = useRef(item.streaming);
-  const prevReasoningCompleteRef = useRef(item.reasoningComplete ?? false);
-  useGSAPCollapse(reasoningBodyRef, reasoningOpen);
-
-  // Follow the current display mode while streaming unless the user manually
-  // toggled this message; auto-close at stream end for untouched messages.
-  useEffect(() => {
-    const wasStreaming = prevStreamingRef.current;
-    const nowStreaming = item.streaming;
-    prevStreamingRef.current = nowStreaming;
-
-    const wasRC = prevReasoningCompleteRef.current;
-    const nowRC = item.reasoningComplete ?? false;
-    prevReasoningCompleteRef.current = nowRC;
-
-    if (nowStreaming) {
-      if (!wasStreaming) userOverridden.current = false;
-      if (defaultExpanded) {
-        setReasoningOpen(true);
-      } else if (!userOverridden.current) {
-        setReasoningOpen(expandWhileStreaming);
-      }
-    } else if (nowRC && !wasRC) {
-      // Reasoning just finished — auto-close while we wait for text.
-      if (!defaultExpanded && !userOverridden.current) {
-        setReasoningOpen(false);
-      }
-    } else if (wasStreaming) {
-      // Stream fully ended — auto-close if user didn't interact.
-      if (!defaultExpanded && !userOverridden.current) {
-        setReasoningOpen(false);
-      }
-    }
-  }, [item.streaming, item.reasoningComplete, defaultExpanded, expandWhileStreaming]);
-
-  const toggleReasoning = () => {
-    userOverridden.current = true;
-    setReasoningOpen((v) => !v);
-  };
   const hasText = item.streaming || item.text.trim() !== "";
   const processOnly = Boolean(item.reasoning) && !hasText;
   const processWithText = Boolean(item.reasoning) && hasText;
-  const visibleReasoning = reasoningOpen
-    ? displayReasoningText(item.reasoning, {
-        streaming: item.streaming,
-        truncateStreaming: truncateStreamingReasoning,
-      })
-    : "";
   return (
     <div className={`msg msg--assistant${processOnly ? " msg--process-only" : ""}${processWithText ? " msg--process-with-text" : ""}`} data-history-restore={item.id.startsWith("h") ? "" : undefined} data-entrance={item.id}>
       {item.reasoning && (
         <div className="reasoning">
-          <button
-            type="button"
-            className="reasoning__head"
-            data-running={item.streaming && !item.reasoningComplete ? "" : undefined}
-            onClick={toggleReasoning}
-            aria-expanded={reasoningOpen}
-          >
+          <div className="reasoning__head" data-running={item.streaming && !item.reasoningComplete ? "" : undefined}>
             <ProcessBrainIcon size={12} />
             <span>{t("msg.thinking")}</span>
             <span className="reasoning__meta">{item.streaming && !item.reasoningComplete ? t("msg.thinkingRunning") : t("msg.thinkingDone")}</span>
-            <ChevronRight className={`reasoning__chevron${reasoningOpen ? " reasoning__chevron--open" : ""}`} size={12} />
-          </button>
-          {reasoningOpen && (
-            <div ref={reasoningBodyRef} className="reasoning__body">{visibleReasoning}</div>
-          )}
+          </div>
+          <div className="reasoning__body">
+            {displayReasoningText(item.reasoning, {
+              streaming: item.streaming,
+              truncateStreaming: false,
+            })}
+          </div>
         </div>
       )}
       {hasText && (
