@@ -262,15 +262,20 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 Read:
   1. The workload brief at %s
   2. The developer's completion at %s
-  3. The developer's rationale at %s (why things were skipped, design choices)
+  3. The developer's rationale at %s — CHALLENGE this. Every "could not" or
+     "chose not to" is a claim the reviewer must verify independently. If you
+     find a viable alternative the developer missed, propose it explicitly.
   4. The actual code changes using bash: git diff
 
 Write your review to %s with this format:
 ## Verdict: PASS or FAIL
 ## Summary
 Brief summary of your assessment.
-## Issues (if FAIL)
-1. Issue description
+## Rationale assessment (always include)
+For each claim in the rationale: whether you verified it, whether you agree,
+and any alternatives you found that the developer should consider.
+## Issues (if FAIL or rationale challenged)
+1. Issue description (prefix with [RATIONALE] if it stems from a challenged rationale claim)
 2. Issue description
 
 After writing the review file, respond with ONLY valid JSON:
