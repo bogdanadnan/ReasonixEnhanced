@@ -663,9 +663,20 @@ func (a *App) Cancel() {
 	a.CancelTab("")
 }
 
+// Pause temporarily stops the in-flight turn without discarding work.
+func (a *App) Pause() {
+	a.PauseTab("")
+}
+
 func (a *App) CancelTab(tabID string) {
 	if ctrl := a.ctrlByTabID(tabID); ctrl != nil {
 		ctrl.Cancel()
+	}
+}
+
+func (a *App) PauseTab(tabID string) {
+	if ctrl := a.ctrlByTabID(tabID); ctrl != nil {
+		ctrl.Pause()
 	}
 }
 

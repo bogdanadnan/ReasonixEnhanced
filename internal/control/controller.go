@@ -131,6 +131,7 @@ type Controller struct {
 	mu          sync.Mutex
 	cancel      context.CancelFunc
 	running     bool
+	paused      bool
 	autosaveWG  sync.WaitGroup
 	planMode    bool
 	goal        string
@@ -1155,10 +1156,31 @@ func (c *Controller) Run(ctx context.Context, input string) error {
 func (c *Controller) Cancel() {
 	c.mu.Lock()
 	cancel := c.cancel
+	c.paused = false
 	c.mu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
+}
+
+// Pause temporarily stops the in-flight turn, keeping all work done so far
+// in the session. The turn resumes on the next Send — the controller feeds
+// the paused context back into the agent as a steer message.
+func (c *Controller) Pause() {
+	c.mu.Lock()
+	cancel := c.cancel
+	c.paused = true
+	c.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// IsPaused reports whether the turn was paused (vs cancelled or completed).
+func (c *Controller) IsPaused() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.paused
 }
 
 // Running reports whether a turn is currently in flight.

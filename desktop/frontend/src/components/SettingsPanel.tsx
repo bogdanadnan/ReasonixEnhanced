@@ -3031,6 +3031,17 @@ function ModelsSection({ s, busy, apply, backgroundApply }: ModelsSectionProps) 
                     onPick={(ref) => void apply(() => app.SetOrchestratorReviewerModel(ref))}
                   />
                 </SettingsField>
+                <SettingsField label={t("settings.orchestratorSecondReviewerModel")} hint={t("settings.orchestratorSecondReviewerModelHint")}>
+                  <ModelPicker
+                    s={s}
+                    refs={refs}
+                    value={s.orchestrator.secondReviewerModel}
+                    disabled={busy}
+                    emptyOptionLabel={t("settings.orchestratorSecondReviewerModelNone")}
+                    emptyOptionHint={t("settings.orchestratorSecondReviewerModelNone")}
+                    onPick={(ref) => void apply(() => app.SetOrchestratorSecondReviewerModel(ref))}
+                  />
+                </SettingsField>
                 <SettingsField label={t("settings.orchestratorMaxRetries")} hint={t("settings.orchestratorMaxRetriesHint")}>
                   <StepLimitControl
                     value={s.orchestrator.maxRetries}

@@ -724,6 +724,7 @@ export interface AgentView {
 export interface OrchestratorSettingsView {
   enabled: boolean;
   reviewerModel: string;
+  secondReviewerModel: string;
   maxRetries: number;
 }
 

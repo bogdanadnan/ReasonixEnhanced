@@ -25,11 +25,12 @@ import (
 // user turn. Progress is persisted to state.json after each step so a crashed
 // session can resume.
 type Orchestrator struct {
-	planner    *Agent
-	developer  *Agent
-	reviewer   *Agent
+	planner        *Agent
+	developer      *Agent
+	reviewer       *Agent
+	reviewer2      *Agent // optional second reviewer
 
-	orchDir    string  // session-scoped directory for orchestration files
+	orchDir    string
 	maxRetries int
 
 	state *OrchState
@@ -57,6 +58,7 @@ type OrchestratorOptions struct {
 	Planner    *Agent
 	Developer  *Agent
 	Reviewer   *Agent
+	Reviewer2  *Agent // optional second reviewer (nil = disabled)
 	OrchDir    string
 	MaxRetries int
 }
@@ -71,6 +73,7 @@ func NewOrchestrator(opts OrchestratorOptions) *Orchestrator {
 		planner:    opts.Planner,
 		developer:  opts.Developer,
 		reviewer:   opts.Reviewer,
+		reviewer2:  opts.Reviewer2,
 		orchDir:    opts.OrchDir,
 		maxRetries: opts.MaxRetries,
 	}
@@ -131,6 +134,10 @@ func (o *Orchestrator) rationalePath() string {
 
 func (o *Orchestrator) reviewPath(n int) string {
 	return filepath.Join(o.orchDir, fmt.Sprintf("review_%d.md", n))
+}
+
+func (o *Orchestrator) reviewPath2(n int) string {
+	return filepath.Join(o.orchDir, fmt.Sprintf("review_%d_b.md", n))
 }
 
 // saveState persists the current state to state.json.
@@ -301,8 +308,65 @@ After writing the review file, respond with ONLY valid JSON:
 		return fmt.Errorf("reviewer response: %w", err)
 	}
 
-	if verdict.Status == "pass" {
-		slog.Info("orchestrator: review pass", "task", taskName)
+	// --- SECOND REVIEWER (if configured) ---
+	// Always run if configured, regardless of first reviewer's verdict.
+	// The developer gets the union of all issues from all reviewers.
+	combinedPass := verdict.Status == "pass"
+	if o.reviewer2 != nil {
+		review2Path := o.reviewPath2(state.Task)
+		review2Prompt := fmt.Sprintf(`You are the Second Reviewer. The first reviewer reviewed this
+work (see their review at %s) and gave a %s. Independently
+verify their assessment — they may have missed issues or been too lenient.
+
+Read:
+  1. The workload brief at %s
+  2. The developer's completion at %s
+  3. The developer's rationale at %s
+  4. The first reviewer's review at %s — EXAMINE their reasoning for gaps
+  5. The actual code changes using bash: git diff
+
+IMPORTANT: You are READ-ONLY. Never edit or write code files.
+If you find issues the first reviewer missed, or disagree with their
+rationale assessment, document why. Do NOT repeat issues from the first
+review unless you have additional context to add.
+
+Write your review to %s with this format:
+## Verdict: PASS or FAIL
+## Summary
+Brief summary of your assessment.
+## Analysis of first review (always include)
+Whether you agree with the first reviewer's verdict and why. If you
+found missed issues or disagree with their rationale assessment, explain.
+## Issues (if FAIL)
+1. Issue description (prefix with [MISSED] if first reviewer didn't flag this)
+2. Issue description
+
+After writing the review file, respond with ONLY valid JSON:
+{"status": "pass", "summary": "..."} or {"status": "fail", "issues": N, "summary": "..."}`,
+			reviewPath, verdict.Status, o.briefPath(), o.donePath(), o.rationalePath(), reviewPath, review2Path,
+		)
+
+		if err := o.reviewer2.Run(ctx, review2Prompt); err != nil {
+			return fmt.Errorf("second reviewer: %w", err)
+		}
+
+		text2 := o.lastAssistantText(o.reviewer2)
+		var verdict2 struct {
+			Status  string `json:"status"`
+			Issues  int    `json:"issues"`
+			Summary string `json:"summary"`
+		}
+		if err := o.parseStructured(text2, &verdict2); err != nil {
+			return fmt.Errorf("second reviewer response: %w", err)
+		}
+
+		if verdict2.Status != "pass" {
+			combinedPass = false
+		}
+	}
+
+	if combinedPass {
+		slog.Info("orchestrator: all reviewers pass", "task", taskName)
 		return o.advanceTask(ctx)
 	}
 

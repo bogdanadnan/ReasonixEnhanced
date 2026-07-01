@@ -1126,6 +1126,12 @@ export const Composer = memo(function Composer({
     const restored = onCancel();
     if (typeof restored === "string") setTextCaretEnd(restored);
   };
+  // handlePause pauses without discarding; handleStop fully cancels.
+  const handlePause = () => { app.PauseTab(tabId || "").catch(() => {}); };
+  const handleStop = () => {
+    app.CancelTab(tabId || "").catch(() => {});
+    handleCancel();
+  };
 
   const pickCommand = (c: CommandInfo) => setTextCaretEnd("/" + c.name + " ");
 
@@ -1850,8 +1856,13 @@ export const Composer = memo(function Composer({
           <div className="composer-runstatus" role="status" aria-live="polite">
             <span className="composer-runstatus__dot" />
             <span className="composer-runstatus__text">{runActivity}</span>
+            <Tooltip label={t("composer.pause")}>
+              <button className="composer-runstatus__pause" type="button" onClick={handlePause} disabled={decisionPending}>
+                <span>⏸</span>
+              </button>
+            </Tooltip>
             <Tooltip label={t("composer.stop")}>
-              <button className="composer-runstatus__stop" type="button" onClick={handleCancel} disabled={decisionPending}>
+              <button className="composer-runstatus__stop" type="button" onClick={handleStop} disabled={decisionPending}>
                 <Square size={10} fill="currentColor" />
                 <span>{t("composer.stopShort")}</span>
               </button>

@@ -109,6 +109,8 @@ export interface AppBindings {
   SteerForTab(tabID: string, text: string): Promise<void>;
   Cancel(): Promise<void>;
   CancelTab(tabID: string): Promise<void>;
+  Pause(): Promise<void>;
+  PauseTab(tabID: string): Promise<void>;
   Approve(id: string, allow: boolean, session: boolean, persist: boolean): Promise<void>;
   ApproveTab(tabID: string, id: string, allow: boolean, session: boolean, persist: boolean): Promise<void>;
   AnswerQuestion(id: string, answers: QuestionAnswer[]): Promise<void>;
@@ -269,6 +271,7 @@ export interface AppBindings {
   SetCompactRatio(v: number): Promise<void>;
   SetOrchestratorEnabled(enabled: boolean): Promise<void>;
   SetOrchestratorReviewerModel(model: string): Promise<void>;
+  SetOrchestratorSecondReviewerModel(model: string): Promise<void>;
   SetOrchestratorMaxRetries(n: number): Promise<void>;
   OrchState(): Promise<OrchState | null>;
   OrchPlanContent(): Promise<string>;
@@ -782,7 +785,7 @@ function makeMockApp(): AppBindings {
       proxy: { type: "socks5", server: "127.0.0.1", port: 7890, username: "", password: "" },
     },
     agent: { temperature: 0.2, maxSteps: 0, plannerMaxSteps: 12, systemPrompt: "You are Reasonix, a coding agent.", coldResumePrune: true, reasoningLanguage: "auto", compactTarget: 0.5, compactRatio: 0.8 },
-    orchestrator: { enabled: false, reviewerModel: "", maxRetries: 3 },
+    orchestrator: { enabled: false, reviewerModel: "", secondReviewerModel: "", maxRetries: 3 },
     bot: {
       enabled: !freshMock,
       model: "",
@@ -1553,8 +1556,15 @@ function makeMockApp(): AppBindings {
           cancelled = true;
           emitMockTurnDone();
         },
+        async Pause() {
+          cancelled = true;
+          // Don't emit turn_done — work is preserved for resume
+        },
         async CancelTab(_tabID) {
           await withMockTabScope(_tabID, () => this.Cancel());
+        },
+        async PauseTab(_tabID) {
+          await withMockTabScope(_tabID, () => this.Pause());
         },
         async Approve(_id, allow, session, persist) {
           if (!pendingApprovalPreview) return;
@@ -2583,6 +2593,9 @@ function makeMockApp(): AppBindings {
     },
     async SetOrchestratorReviewerModel(model: string) {
       settings.orchestrator = { ...settings.orchestrator, reviewerModel: model };
+    },
+    async SetOrchestratorSecondReviewerModel(model: string) {
+      settings.orchestrator = { ...settings.orchestrator, secondReviewerModel: model };
     },
     async SetOrchestratorMaxRetries(n: number) {
       settings.orchestrator = { ...settings.orchestrator, maxRetries: n };

@@ -85,9 +85,10 @@ type AgentView struct {
 }
 
 type OrchestratorSettingsView struct {
-	Enabled       bool   `json:"enabled"`
-	ReviewerModel string `json:"reviewerModel"`
-	MaxRetries    int    `json:"maxRetries"`
+	Enabled            bool   `json:"enabled"`
+	ReviewerModel      string `json:"reviewerModel"`
+	SecondReviewerModel string `json:"secondReviewerModel"`
+	MaxRetries         int    `json:"maxRetries"`
 }
 
 const defaultCompactTarget = 0.5
@@ -364,7 +365,7 @@ func (a *App) Settings() SettingsView {
 			},
 			Sandbox:            SandboxView{Bash: "enforce", AllowWrite: []string{}, Shell: "auto"},
 			Agent:              AgentView{PlannerMaxSteps: 12, ColdResumePrune: true, ReasoningLanguage: "auto", CompactTarget: 0.5, CompactRatio: 0.8},
-			Orchestrator:       OrchestratorSettingsView{Enabled: false, ReviewerModel: "", MaxRetries: 3},
+			Orchestrator:       OrchestratorSettingsView{Enabled: false, ReviewerModel: "", SecondReviewerModel: "", MaxRetries: 3},
 			Bot:                botSettingsView(config.BotConfig{}),
 			AutoPlan:           "off",
 			DesktopLayoutStyle: "classic",
@@ -431,9 +432,10 @@ func (a *App) Settings() SettingsView {
 			CompactRatio:      compactRatioOrDefault(cfg.Agent.CompactRatio),
 		},
 		Orchestrator: OrchestratorSettingsView{
-			Enabled:       cfg.Orchestrator.Enabled,
-			ReviewerModel: cfg.Orchestrator.ReviewerModel,
-			MaxRetries:    maxOrchRetries(cfg.Orchestrator.MaxRetries),
+			Enabled:             cfg.Orchestrator.Enabled,
+			ReviewerModel:       cfg.Orchestrator.ReviewerModel,
+			SecondReviewerModel: cfg.Orchestrator.SecondReviewerModel,
+			MaxRetries:          maxOrchRetries(cfg.Orchestrator.MaxRetries),
 		},
 		Bot:                botSettingsView(cfg.Bot),
 		DesktopLanguage:    cfg.DesktopLanguage(),
@@ -1596,6 +1598,13 @@ func (a *App) SetOrchestratorEnabled(enabled bool) error {
 func (a *App) SetOrchestratorReviewerModel(model string) error {
 	return a.applyConfigChange(func(c *config.Config) error {
 		c.Orchestrator.ReviewerModel = model
+		return nil
+	})
+}
+
+func (a *App) SetOrchestratorSecondReviewerModel(model string) error {
+	return a.applyConfigChange(func(c *config.Config) error {
+		c.Orchestrator.SecondReviewerModel = model
 		return nil
 	})
 }
