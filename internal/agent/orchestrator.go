@@ -125,6 +125,10 @@ func (o *Orchestrator) donePath() string {
 	return filepath.Join(o.orchDir, "workload_done.md")
 }
 
+func (o *Orchestrator) rationalePath() string {
+	return filepath.Join(o.orchDir, "workload_rationale.md")
+}
+
 func (o *Orchestrator) reviewPath(n int) string {
 	return filepath.Join(o.orchDir, fmt.Sprintf("review_%d.md", n))
 }
@@ -240,8 +244,8 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 		return err
 	}
 
-	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nRead existing code with read_file before editing. Run build/tests with bash after changes.\n\nIf there is a review history, address any issues from the latest review_N.md.\n\nWhen done, write a completion summary to %s and respond with:\n{\"status\": \"done\", \"summary\": \"...\"}",
-		o.briefPath(), o.donePath())
+	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nRead existing code with read_file before editing. Run build/tests with bash after changes.\n\nIf there is a review history, address any issues from the latest review_N.md.\nIf you cannot or choose not to implement any aspect, document it with rationale in %s.\n\nWhen done, write a completion summary to %s and a rationale file at %s explaining any skipped items, deliberate deviations, or design choices the reviewer should know about.\n\nRespond with:\n{\"status\": \"done\", \"summary\": \"...\", \"rationale\": \"...\"}",
+		o.briefPath(), o.rationalePath(), o.donePath(), o.rationalePath())
 	if err := o.developer.Run(ctx, devPrompt); err != nil {
 		return fmt.Errorf("developer: %w", err)
 	}
@@ -258,7 +262,8 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 Read:
   1. The workload brief at %s
   2. The developer's completion at %s
-  3. The actual code changes using bash: git diff
+  3. The developer's rationale at %s (why things were skipped, design choices)
+  4. The actual code changes using bash: git diff
 
 Write your review to %s with this format:
 ## Verdict: PASS or FAIL
@@ -270,7 +275,7 @@ Brief summary of your assessment.
 
 After writing the review file, respond with ONLY valid JSON:
 {"status": "pass", "summary": "..."} or {"status": "fail", "issues": N, "summary": "..."}`,
-		o.briefPath(), o.donePath(), reviewPath)
+		o.briefPath(), o.donePath(), o.rationalePath(), reviewPath)
 
 	if err := o.reviewer.Run(ctx, reviewPrompt); err != nil {
 		return fmt.Errorf("reviewer: %w", err)
