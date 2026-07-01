@@ -87,19 +87,38 @@ func NewOrchestrator(opts OrchestratorOptions) *Orchestrator {
 }
 
 // Run drives the full orchestration cycle. It blocks until all phases complete
-// or the context is cancelled.
+// or the context is cancelled. If a prior run was interrupted (paused/cancelled),
+// it resumes from state.json instead of re-planning.
 func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 	slog.Info("orchestrator: starting", "orchDir", o.orchDir)
 	if err := os.MkdirAll(o.orchDir, 0o755); err != nil {
 		return fmt.Errorf("orchestrator: create orch dir: %w", err)
 	}
 
-	// Phase: Planning
+	// Try to resume from a prior interrupted run
+	if state, err := loadState(o.statePath()); err == nil && state.Status != "done" && len(state.Phases) > 0 {
+		slog.Info("orchestrator: resuming from state.json", "phase", state.Phase, "task", state.Task)
+		o.mu.Lock()
+		o.state = state
+		o.mu.Unlock()
+		// Continue the task loop — user input becomes a steer message
+		if userInput != "" {
+			o.developer.Session().Add(provider.Message{Role: provider.RoleUser, Content: "[User steer] " + userInput})
+		}
+		for !o.isDone() {
+			if err := o.runTaskCycle(ctx); err != nil {
+				return fmt.Errorf("orchestrator: task cycle: %w", err)
+			}
+		}
+		return nil
+	}
+
+	// Fresh run: planning phase
 	if err := o.runPlanning(ctx, userInput); err != nil {
 		return fmt.Errorf("orchestrator: planning phase: %w", err)
 	}
 
-	// Phase: Development loop
+	// Development loop
 	for !o.isDone() {
 		if err := o.runTaskCycle(ctx); err != nil {
 			return fmt.Errorf("orchestrator: task cycle: %w", err)
