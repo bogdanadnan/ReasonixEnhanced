@@ -3003,6 +3003,45 @@ function ModelsSection({ s, busy, apply, backgroundApply }: ModelsSectionProps) 
               </div>
             </SettingsField>
           </SettingsSection>
+          <SettingsSection title={t("settings.orchestrator")} description={t("settings.orchestratorHint")}>
+            <SettingsField label={t("settings.orchestratorEnabled")} hint={t("settings.orchestratorEnabledHint")}>
+              <div className="set-seg">
+                {([true, false] as const).map((on) => (
+                  <button
+                    key={on ? "on" : "off"}
+                    className={`set-seg__btn${s.orchestrator.enabled === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetOrchestratorEnabled(on))}
+                  >
+                    {on ? t("settings.coldResumePrune.on") : t("settings.coldResumePrune.off")}
+                  </button>
+                ))}
+              </div>
+            </SettingsField>
+            {s.orchestrator.enabled && (
+              <>
+                <SettingsField label={t("settings.orchestratorReviewerModel")} hint={t("settings.orchestratorReviewerModelHint")}>
+                  <ModelPicker
+                    s={s}
+                    refs={refs}
+                    value={s.orchestrator.reviewerModel}
+                    disabled={busy}
+                    emptyOptionLabel={t("common.auto")}
+                    emptyOptionHint={t("common.auto")}
+                    onPick={(ref) => void apply(() => app.SetOrchestratorReviewerModel(ref))}
+                  />
+                </SettingsField>
+                <SettingsField label={t("settings.orchestratorMaxRetries")} hint={t("settings.orchestratorMaxRetriesHint")}>
+                  <StepLimitControl
+                    value={s.orchestrator.maxRetries}
+                    presets={[1, 2, 3, 5, 10]}
+                    busy={busy}
+                    onChange={(next) => void apply(() => app.SetOrchestratorMaxRetries(next))}
+                  />
+                </SettingsField>
+              </>
+            )}
+          </SettingsSection>
         </>
       ) : (
         <ProvidersSection s={s} busy={busy} apply={apply} />

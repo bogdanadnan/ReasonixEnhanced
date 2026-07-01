@@ -84,6 +84,12 @@ type AgentView struct {
 	CompactRatio      float64 `json:"compactRatio"`
 }
 
+type OrchestratorSettingsView struct {
+	Enabled       bool   `json:"enabled"`
+	ReviewerModel string `json:"reviewerModel"`
+	MaxRetries    int    `json:"maxRetries"`
+}
+
 const defaultCompactTarget = 0.5
 const defaultCompactRatio = 0.8
 
@@ -97,6 +103,13 @@ func compactTargetOrDefault(v float64) float64 {
 func compactRatioOrDefault(v float64) float64 {
 	if v <= 0 {
 		return defaultCompactRatio
+	}
+	return v
+}
+
+func maxOrchRetries(v int) int {
+	if v <= 0 {
+		return 3
 	}
 	return v
 }
@@ -165,7 +178,8 @@ type SettingsView struct {
 	Permissions        PermissionsView `json:"permissions"`
 	Sandbox            SandboxView     `json:"sandbox"`
 	Network            NetworkView     `json:"network"`
-	Agent              AgentView       `json:"agent"`
+	Agent              AgentView                `json:"agent"`
+	Orchestrator       OrchestratorSettingsView `json:"orchestrator"`
 	Bot                BotSettingsView `json:"bot"`
 	DesktopLanguage    string          `json:"desktopLanguage"`
 	DesktopLayoutStyle string          `json:"desktopLayoutStyle"`
@@ -350,6 +364,7 @@ func (a *App) Settings() SettingsView {
 			},
 			Sandbox:            SandboxView{Bash: "enforce", AllowWrite: []string{}, Shell: "auto"},
 			Agent:              AgentView{PlannerMaxSteps: 12, ColdResumePrune: true, ReasoningLanguage: "auto", CompactTarget: 0.5, CompactRatio: 0.8},
+			Orchestrator:       OrchestratorSettingsView{Enabled: false, ReviewerModel: "", MaxRetries: 3},
 			Bot:                botSettingsView(config.BotConfig{}),
 			AutoPlan:           "off",
 			DesktopLayoutStyle: "classic",
@@ -414,6 +429,11 @@ func (a *App) Settings() SettingsView {
 			ReasoningLanguage: cfg.ReasoningLanguage(),
 			CompactTarget:     compactTargetOrDefault(cfg.Agent.CompactTarget),
 			CompactRatio:      compactRatioOrDefault(cfg.Agent.CompactRatio),
+		},
+		Orchestrator: OrchestratorSettingsView{
+			Enabled:       cfg.Orchestrator.Enabled,
+			ReviewerModel: cfg.Orchestrator.ReviewerModel,
+			MaxRetries:    maxOrchRetries(cfg.Orchestrator.MaxRetries),
 		},
 		Bot:                botSettingsView(cfg.Bot),
 		DesktopLanguage:    cfg.DesktopLanguage(),
@@ -1564,6 +1584,27 @@ func (a *App) SetCompactTarget(v float64) error {
 
 func (a *App) SetCompactRatio(v float64) error {
 	return a.applyConfigChange(func(c *config.Config) error { return c.SetCompactRatio(v) })
+}
+
+func (a *App) SetOrchestratorEnabled(enabled bool) error {
+	return a.applyConfigChange(func(c *config.Config) error {
+		c.Orchestrator.Enabled = enabled
+		return nil
+	})
+}
+
+func (a *App) SetOrchestratorReviewerModel(model string) error {
+	return a.applyConfigChange(func(c *config.Config) error {
+		c.Orchestrator.ReviewerModel = model
+		return nil
+	})
+}
+
+func (a *App) SetOrchestratorMaxRetries(n int) error {
+	return a.applyConfigChange(func(c *config.Config) error {
+		c.Orchestrator.MaxRetries = n
+		return nil
+	})
 }
 
 func (a *App) SetReasoningLanguage(lang string) error {

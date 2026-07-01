@@ -721,6 +721,12 @@ export interface AgentView {
   compactRatio: number;
 }
 
+export interface OrchestratorSettingsView {
+  enabled: boolean;
+  reviewerModel: string;
+  maxRetries: number;
+}
+
 export interface OrchPhase {
   name: string;
   tasks: string[];
@@ -896,6 +902,7 @@ export interface SettingsView {
   sandbox: SandboxView;
   network: NetworkView;
   agent: AgentView;
+  orchestrator: OrchestratorSettingsView;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench"

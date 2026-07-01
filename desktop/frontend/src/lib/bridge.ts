@@ -267,6 +267,9 @@ export interface AppBindings {
   SetColdResumePrune(enabled: boolean): Promise<void>;
   SetCompactTarget(v: number): Promise<void>;
   SetCompactRatio(v: number): Promise<void>;
+  SetOrchestratorEnabled(enabled: boolean): Promise<void>;
+  SetOrchestratorReviewerModel(model: string): Promise<void>;
+  SetOrchestratorMaxRetries(n: number): Promise<void>;
   OrchState(): Promise<OrchState | null>;
   OrchPlanContent(): Promise<string>;
   OrchReviewContent(n: number): Promise<string>;
@@ -779,6 +782,7 @@ function makeMockApp(): AppBindings {
       proxy: { type: "socks5", server: "127.0.0.1", port: 7890, username: "", password: "" },
     },
     agent: { temperature: 0.2, maxSteps: 0, plannerMaxSteps: 12, systemPrompt: "You are Reasonix, a coding agent.", coldResumePrune: true, reasoningLanguage: "auto", compactTarget: 0.5, compactRatio: 0.8 },
+    orchestrator: { enabled: false, reviewerModel: "", maxRetries: 3 },
     bot: {
       enabled: !freshMock,
       model: "",
@@ -2573,6 +2577,15 @@ function makeMockApp(): AppBindings {
     },
     async SetCompactRatio(v: number) {
       settings.agent = { ...settings.agent, compactRatio: v };
+    },
+    async SetOrchestratorEnabled(enabled: boolean) {
+      settings.orchestrator = { ...settings.orchestrator, enabled };
+    },
+    async SetOrchestratorReviewerModel(model: string) {
+      settings.orchestrator = { ...settings.orchestrator, reviewerModel: model };
+    },
+    async SetOrchestratorMaxRetries(n: number) {
+      settings.orchestrator = { ...settings.orchestrator, maxRetries: n };
     },
     async OrchState(): Promise<OrchState | null> { return null; },
     async OrchPlanContent(): Promise<string> { return ""; },
