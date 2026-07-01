@@ -263,9 +263,13 @@ Read:
   1. The workload brief at %s
   2. The developer's completion at %s
   3. The developer's rationale at %s — CHALLENGE this. Every "could not" or
-     "chose not to" is a claim the reviewer must verify independently. If you
-     find a viable alternative the developer missed, propose it explicitly.
+     "chose not to" is a claim you must verify independently. If you find
+     a viable alternative, describe it in pseudocode or as concrete steps.
   4. The actual code changes using bash: git diff
+
+IMPORTANT: You are a READ-ONLY reviewer. Never edit or write code files.
+Use pseudocode, step-by-step instructions, or code snippets (fenced) to
+illustrate alternatives — the developer will implement them.
 
 Write your review to %s with this format:
 ## Verdict: PASS or FAIL
@@ -273,9 +277,9 @@ Write your review to %s with this format:
 Brief summary of your assessment.
 ## Rationale assessment (always include)
 For each claim in the rationale: whether you verified it, whether you agree,
-and any alternatives you found that the developer should consider.
+and any alternatives you found (as pseudocode or concrete steps, not code edits).
 ## Issues (if FAIL or rationale challenged)
-1. Issue description (prefix with [RATIONALE] if it stems from a challenged rationale claim)
+1. Issue description (prefix with [RATIONALE] if it stems from a challenged claim)
 2. Issue description
 
 After writing the review file, respond with ONLY valid JSON:
@@ -471,7 +475,9 @@ the developer just completed against the task brief. Be thorough but concise:
 check correctness, edge cases, error handling, and adherence to the task.
 
 Use bash to run git diff and git log to see what changed. Read modified files
-with read_file. Do NOT make edits yourself — only review and report findings.
+with read_file. Do NOT edit or write code files yourself — you are read-only.
+When proposing alternatives, use pseudocode, step-by-step instructions, or
+fenced code snippets as hints. The developer will implement them.
 
 Write your review to the file path given in the prompt, then respond with a
 JSON object containing your verdict.`
