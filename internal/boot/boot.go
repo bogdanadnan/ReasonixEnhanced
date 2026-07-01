@@ -901,7 +901,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 					Planner:    plannerAgent,
 					Developer:  executor,
 					Reviewer:   reviewerAgent,
-					OrchDir:    filepath.Join(config.SessionDir(), ".reasonix", "orchestrator"),
+					OrchDir:    filepath.Join(root, ".reasonix", "orchestrator"),
 					MaxRetries: maxRetries,
 				})
 				runner = orch
