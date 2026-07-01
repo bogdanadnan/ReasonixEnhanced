@@ -30,8 +30,8 @@ export const OrchestratorPanel = memo(function OrchestratorPanel({ active }: { a
 
   const currentPhase = state.phases?.[state.phase - 1];
   const taskName = currentPhase?.tasks?.[state.task - 1] ?? "";
-  const totalTasks = state.phases?.reduce((sum, p) => sum + p.tasks.length, 0) ?? 0;
-  const doneTasks = state.phases?.reduce((sum, p) => sum + p.done.length, 0) ?? 0;
+  const totalTasks = state.phases?.reduce((sum, p) => sum + (p?.tasks?.length ?? 0), 0) ?? 0;
+  const doneTasks = state.phases?.reduce((sum, p) => sum + (p?.done?.length ?? 0), 0) ?? 0;
   const progress = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
   const statusLabel = () => {
@@ -80,11 +80,11 @@ export const OrchestratorPanel = memo(function OrchestratorPanel({ active }: { a
               {t("orchestrator.planTree")}
             </summary>
             <div className="orchestrator-panel__plan">
-              {state.phases?.map((phase, pi) => (
+              {state.phases?.filter(Boolean).map((phase, pi) => (
                 <div key={pi} className={`orchestrator-panel__phase ${pi + 1 === state.phase ? "orchestrator-panel__phase--active" : ""}`}>
                   <div className="orchestrator-panel__phase-name">{phase.name}</div>
-                  {phase.tasks.map((task, ti) => {
-                    const done = phase.done.includes(task);
+                  {(phase.tasks || []).map((task, ti) => {
+                    const done = (phase.done || []).includes(task);
                     return (
                       <div key={ti} className={`orchestrator-panel__task ${done ? "orchestrator-panel__task--done" : ""}`}>
                         {done ? <CheckCircle size={10} /> : <span className="orchestrator-panel__task-dot" />}

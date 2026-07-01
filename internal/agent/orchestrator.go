@@ -261,6 +261,16 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 	}
 	phase := state.Phases[state.Phase-1]
 	if state.Task < 1 || state.Task > len(phase.Tasks) {
+		// Empty phase (e.g. free-text section) — skip to next phase
+		if len(phase.Tasks) == 0 {
+			slog.Info("orchestrator: skipping empty phase", "phase", phase.Name)
+			o.mu.Lock()
+			o.state.Phase++
+			o.state.Task = 1
+			o.mu.Unlock()
+			o.saveState()
+			return nil
+		}
 		return fmt.Errorf("task index %d out of range in phase %q", state.Task, phase.Name)
 	}
 	taskName := phase.Tasks[state.Task-1]
@@ -565,7 +575,17 @@ func parsePlan(path string) ([]OrchPhase, error) {
 	if len(phases) == 0 {
 		return nil, fmt.Errorf("plan.md contains no ## Phase headings")
 	}
-	return phases, nil
+	// Drop phases with no tasks (e.g. free-text "Overview" sections)
+	filtered := phases[:0]
+	for _, p := range phases {
+		if len(p.Tasks) > 0 {
+			filtered = append(filtered, p)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, fmt.Errorf("plan.md has phases but none contain - [ ] task items")
+	}
+	return filtered, nil
 }
 
 // loadState reads orchestrator progress from state.json.
