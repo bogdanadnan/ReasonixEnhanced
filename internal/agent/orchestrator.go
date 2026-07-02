@@ -677,7 +677,11 @@ func (o *Orchestrator) advanceTask(ctx context.Context) error {
 		}
 	}
 	slog.Info("orchestrator: advanceTask done", "next_phase", o.state.Phase, "next_task", o.state.Task, "status", o.state.Status)
-	return o.saveState()
+	if err := o.saveState(); err != nil {
+		slog.Warn("orchestrator: saveState failed in advanceTask, will retry later", "err", err)
+		// Don't fail the turn — state is correct in memory, next save will fix it
+	}
+	return nil
 }
 
 // --- helpers ---
