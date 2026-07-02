@@ -175,6 +175,7 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 	if o.state != nil && o.state.Status == "done" {
 		o.state.Status = "final_review"
 		o.saveStateLocked()
+		o.journal("FINAL_REVIEW starting")
 
 		finalPrompt := fmt.Sprintf(`You are the Planner. All development tasks are complete. Perform a final review.
 Read the plan at %s and ALL review files in %s. Use bash to build and test.
@@ -196,8 +197,9 @@ Call the report_plan tool with your results.`,
 		defer o.planner.tools.Remove("report_plan")
 
 		if err := o.planner.Run(ctx, finalPrompt); err != nil {
+			o.journal("FINAL_REVIEW planner error: %v", err)
 			slog.Warn("orchestrator: final review failed", "err", err)
-			return nil // don't fail the turn for this
+			return nil
 		}
 		raw, _ := planTool.Wait()
 		var finalVerdict struct {
@@ -208,6 +210,7 @@ Call the report_plan tool with your results.`,
 		if raw != nil {
 			json.Unmarshal(raw, &finalVerdict)
 		}
+		o.journal("FINAL_REVIEW verdict=%s issues=%d", finalVerdict.Status, finalVerdict.Issues)
 		if finalVerdict.Status == "fail" {
 			slog.Info("orchestrator: final review found issues, restarting", "issues", finalVerdict.Issues)
 			o.cleanOrchDir()
