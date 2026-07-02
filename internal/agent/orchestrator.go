@@ -54,6 +54,9 @@ type OrchState struct {
 	DeveloperLabel string      `json:"developerLabel"`
 	ReviewerLabel  string      `json:"reviewerLabel"`
 	Reviewer2Label string      `json:"reviewer2Label"`
+	DevDone        bool        `json:"devDone"`
+	ReviewDone     bool        `json:"reviewDone"`
+	Review2Done    bool        `json:"review2Done"`
 }
 
 // OrchPhase is one phase of the plan.
@@ -489,6 +492,14 @@ issues about workload files — focus ONLY on code/implementation fixes.
 	}
 	// Parse just to verify; developer output is secondary
 
+	state.DevDone = true
+	state.ReviewDone = false
+	state.Review2Done = false
+	o.mu.Lock()
+	o.state = &state
+	o.mu.Unlock()
+	o.saveStateLocked()
+
 	// --- REVIEWING ---
 	state.Status = "reviewing"
 	o.mu.Lock()
@@ -550,6 +561,12 @@ with text — use ONLY the tool.`,
 			return fmt.Errorf("reviewer report: %w", err)
 		}
 	}
+
+	state.ReviewDone = true
+	o.mu.Lock()
+	o.state = &state
+	o.mu.Unlock()
+	o.saveStateLocked()
 
 	// --- SECOND REVIEWER (if configured) ---
 	// Always run if configured, regardless of first reviewer's verdict.
