@@ -667,6 +667,7 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 
 	// Review fail — retry if budget remains
 	state.Retries++
+	state.DevDone = false // reset so developer runs again with review feedback
 	slog.Info("orchestrator: review fail", "task", taskName, "retries", state.Retries, "issues", verdict.Issues)
 	if state.Retries <= o.maxRetries {
 		o.mu.Lock()
