@@ -436,6 +436,7 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 	}
 
 	// --- DEVELOPING ---
+	if !state.DevDone {
 	slog.Info("orchestrator: developing", "phase", state.Phase, "task", state.Task, "name", taskName, "retries", state.Retries)
 	state.Status = "developing"
 	o.mu.Lock()
@@ -484,6 +485,7 @@ issues about workload files — focus ONLY on code/implementation fixes.
 	}
 
 	raw, devErr := devTool.Wait()
+	_ = raw
 	if devErr != nil {
 		text := o.lastAssistantText(o.developer)
 		if text != "" {
@@ -499,6 +501,7 @@ issues about workload files — focus ONLY on code/implementation fixes.
 	o.state = &state
 	o.mu.Unlock()
 	o.saveStateLocked()
+	} // end of !state.DevDone block
 
 	// --- REVIEWING ---
 	state.Status = "reviewing"
