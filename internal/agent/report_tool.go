@@ -15,6 +15,7 @@ type reportTool struct {
 	description string
 	schema      json.RawMessage
 	result      chan json.RawMessage // buffered channel; the orchestrator reads from it
+	called      bool                 // true after first Execute call
 }
 
 func newReportTool(name, desc string, schema json.RawMessage) *reportTool {
@@ -34,27 +35,31 @@ func (t *reportTool) Schema() json.RawMessage {
 }
 
 func (t *reportTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
-	// Non-blocking send: if the orchestrator already received a result,
-	// drop this one. The tool is idempotent — the last call wins.
+	if t.called {
+		return "ERROR: You already called this tool. STOP immediately — do not call any tool again. Respond with only 'done' as text.", nil
+	}
+	t.called = true
 	select {
 	case t.result <- args:
 	default:
-		// Drain the old value and send the new one
 		select {
 		case <-t.result:
 		default:
 		}
 		t.result <- args
 	}
-	return "Report received by orchestrator. Your work is complete — respond ONLY with 'done' now.", nil
+	return "Report received. Your work is complete. Respond with ONLY the word 'done' as text now.", nil
 }
 
 func (t *reportTool) Wait() (json.RawMessage, error) {
+	if !t.called {
+		return nil, fmt.Errorf("%s: agent did not call the report tool", t.name)
+	}
 	select {
 	case r := <-t.result:
 		return r, nil
 	default:
-		return nil, fmt.Errorf("%s: agent did not call the report tool", t.name)
+		return nil, fmt.Errorf("%s: no result in channel", t.name)
 	}
 }
 
