@@ -124,6 +124,20 @@ func (r *Registry) Add(t Tool) {
 	r.canon[name] = provider.CanonicalizeSchema(t.Schema())
 }
 
+// Remove drops a tool by name from the registry.
+func (r *Registry) Remove(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.tools, name)
+	delete(r.canon, name)
+	for i, n := range r.order {
+		if n == name {
+			r.order = append(r.order[:i], r.order[i+1:]...)
+			break
+		}
+	}
+}
+
 // MCPNamePrefix is the namespace every MCP tool name carries: the
 // model-visible name is "mcp__<server>__<tool>".
 const MCPNamePrefix = "mcp__"

@@ -243,19 +243,32 @@ read_file, glob, and grep to understand the existing structure, then write
 the plan to %s using ## for phases and - [ ] for individual tasks.
 Each task should be concrete and implementable in one developer session.
 
-When done, respond with ONLY valid JSON (no markdown fences, no extra text):
-{"phase_count": N, "task_count": M}
+When you're done, call the report_plan tool with your results. Do NOT respond
+with text — use ONLY the tool.`, o.planPath(), userInput)
 
-User request:
-%s`, o.planPath(), userInput)
+	planTool := newReportTool("report_plan",
+		"Report planning results back to the orchestrator. Call this when your plan is complete.",
+		json.RawMessage(`{"type":"object","properties":{"phase_count":{"type":"integer"},"task_count":{"type":"integer"}},"required":["phase_count","task_count"]}`))
+	o.planner.tools.Add(planTool)
+	defer o.planner.tools.Remove("report_plan")
 
-	var planResult struct {
-		PhaseCount int `json:"phase_count"`
-		TaskCount  int `json:"task_count"`
+	if err := o.planner.Run(ctx, prompt); err != nil {
+		return fmt.Errorf("planner: %w", err)
 	}
-	if err := o.requestStructured(ctx, o.planner, prompt, &planResult,
-		`{"phase_count": N, "task_count": M}`, 3); err != nil {
-		return fmt.Errorf("planner response: %w", err)
+
+	raw, planErr := planTool.Wait()
+	if planErr != nil {
+		// Fallback: try to parse from text if the agent didn't use the tool
+		text := o.lastAssistantText(o.planner)
+		if text != "" {
+			raw = json.RawMessage(text)
+		} else {
+			return fmt.Errorf("planner: %w", planErr)
+		}
+	}
+	var planResult plannerReport
+	if err := json.Unmarshal(raw, &planResult); err != nil {
+		return fmt.Errorf("planner report: %w", err)
 	}
 
 	// Verify the plan file was actually written. If not, nudge the planner.
@@ -337,11 +350,27 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 		return err
 	}
 
-	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nRead existing code with read_file before editing. Run build/tests with bash after changes.\n\nIf there is a review history, address any issues from the latest review_N.md.\nIf you cannot or choose not to implement any aspect, document it with rationale in %s.\n\nWhen done, write a completion summary to %s and a rationale file at %s explaining any skipped items, deliberate deviations, or design choices the reviewer should know about.\n\nRespond with:\n{\"status\": \"done\", \"summary\": \"...\", \"rationale\": \"...\"}",
+	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nRead existing code with read_file before editing. Run build/tests with bash after changes.\n\nIf there is a review history, address any issues from the latest review_N.md.\nIf you cannot or choose not to implement any aspect, document it with rationale in %s.\n\nWhen done, write a completion summary to %s and a rationale file at %s explaining any skipped items, deliberate deviations, or design choices the reviewer should know about. Then call the report_work tool. Do NOT respond with text — use ONLY the tool.",
 		o.briefPath(), o.rationalePath(), o.donePath(), o.rationalePath())
+
+	devTool := newReportTool("report_work",
+		"Report work completion back to the orchestrator. Call this when you're done.",
+		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string"},"summary":{"type":"string"},"rationale":{"type":"string"}},"required":["status","summary"]}`))
+	o.developer.tools.Add(devTool)
+	defer o.developer.tools.Remove("report_work")
+
 	if err := o.developer.Run(ctx, devPrompt); err != nil {
 		return fmt.Errorf("developer: %w", err)
 	}
+
+	raw, devErr := devTool.Wait()
+	if devErr != nil {
+		text := o.lastAssistantText(o.developer)
+		if text != "" {
+			raw = json.RawMessage(text)
+		}
+	}
+	// Parse just to verify; developer output is secondary
 
 	// --- REVIEWING ---
 	state.Status = "reviewing"
@@ -379,25 +408,29 @@ After writing the review file, respond with ONLY valid JSON:
 {"status": "pass", "summary": "..."} or {"status": "fail", "issues": N, "summary": "..."}`,
 		o.briefPath(), o.donePath(), o.rationalePath(), reviewPath)
 
+	var verdict reviewerReport
+	reviewTool := newReportTool("report_review",
+		"Report your review verdict to the orchestrator. Call this when your review is complete.",
+		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`))
+	o.reviewer.tools.Add(reviewTool)
+	defer o.reviewer.tools.Remove("report_review")
+
 	if err := o.reviewer.Run(ctx, reviewPrompt); err != nil {
 		return fmt.Errorf("reviewer: %w", err)
 	}
 
-	// Parse reviewer verdict with nudge support
-	var verdict struct {
-		Status  string `json:"status"`
-		Issues  int    `json:"issues"`
-		Summary string `json:"summary"`
-	}
-	if err := o.parseStructured(o.lastAssistantText(o.reviewer), &verdict); err != nil {
-		// Nudge: re-run the reviewer with corrective prompt
-		nudge := fmt.Sprintf("Your response was not valid JSON. Respond with ONLY: {\"status\":\"pass\",\"summary\":\"...\"} or {\"status\":\"fail\",\"issues\":N,\"summary\":\"...\"}")
-		o.reviewer.Session().Add(provider.Message{Role: provider.RoleUser, Content: nudge})
-		if err2 := o.reviewer.Run(ctx, "Review the work again and respond with valid JSON."); err2 != nil {
-			return fmt.Errorf("reviewer nudge: %w", err2)
+	// Parse reviewer verdict from tool call
+	raw, waitErr := reviewTool.Wait()
+	if waitErr != nil {
+		text := o.lastAssistantText(o.reviewer)
+		if text != "" && o.parseStructured(text, &verdict) == nil {
+			// Fallback succeeded
+		} else {
+			return fmt.Errorf("reviewer: %w", waitErr)
 		}
-		if err3 := o.parseStructured(o.lastAssistantText(o.reviewer), &verdict); err3 != nil {
-			return fmt.Errorf("reviewer response after nudge: %w", err3)
+	} else {
+		if err := json.Unmarshal(raw, &verdict); err != nil {
+			return fmt.Errorf("reviewer report: %w", err)
 		}
 	}
 
