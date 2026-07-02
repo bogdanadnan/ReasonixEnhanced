@@ -922,13 +922,17 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 				}, sink)
 			}
 			orch = agent.NewOrchestrator(agent.OrchestratorOptions{
-					Planner:    plannerAgent,
-					Developer:  executor,
-					Reviewer:   reviewerAgent,
-					Reviewer2:  reviewer2Agent,
-					OrchDir:    filepath.Join(root, ".reasonix", "orchestrator"),
-					MaxRetries: maxRetries,
-					AutoCommit: cfg.Orchestrator.AutoCommit,
+					Planner:        plannerAgent,
+					Developer:      executor,
+					Reviewer:       reviewerAgent,
+					Reviewer2:      reviewer2Agent,
+					PlannerModel:   pe.Model,
+					DeveloperModel: entry.Model,
+					ReviewerModel:  re.Model,
+					Reviewer2Model: "",
+					OrchDir:        filepath.Join(root, ".reasonix", "orchestrator"),
+					MaxRetries:     maxRetries,
+					AutoCommit:     cfg.Orchestrator.AutoCommit,
 				})
 				runner = orch
 				label = entry.Model + " + planner " + pe.Model + " + reviewer " + re.Name

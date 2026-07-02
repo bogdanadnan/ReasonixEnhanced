@@ -30,6 +30,11 @@ type Orchestrator struct {
 	reviewer       *Agent
 	reviewer2      *Agent // optional second reviewer
 
+	plannerModel   string
+	developerModel string
+	reviewerModel  string
+	reviewer2Model string
+
 	orchDir    string
 	maxRetries int
 	autoCommit bool
@@ -67,6 +72,11 @@ type OrchestratorOptions struct {
 	OrchDir    string
 	MaxRetries int
 	AutoCommit bool
+
+	PlannerModel    string // model ID for display
+	DeveloperModel  string
+	ReviewerModel   string
+	Reviewer2Model  string
 }
 
 // NewOrchestrator creates an orchestrator. Callers must ensure all three agents
@@ -83,13 +93,17 @@ func NewOrchestrator(opts OrchestratorOptions) *Orchestrator {
 		}
 	}
 	return &Orchestrator{
-		planner:    opts.Planner,
-		developer:  opts.Developer,
-		reviewer:   opts.Reviewer,
-		reviewer2:  opts.Reviewer2,
-		orchDir:    orchDir,
-		maxRetries: opts.MaxRetries,
-		autoCommit: opts.AutoCommit,
+		planner:        opts.Planner,
+		developer:      opts.Developer,
+		reviewer:       opts.Reviewer,
+		reviewer2:      opts.Reviewer2,
+		plannerModel:   opts.PlannerModel,
+		developerModel: opts.DeveloperModel,
+		reviewerModel:  opts.ReviewerModel,
+		reviewer2Model: opts.Reviewer2Model,
+		orchDir:        orchDir,
+		maxRetries:     opts.MaxRetries,
+		autoCommit:     opts.AutoCommit,
 	}
 }
 
@@ -233,30 +247,10 @@ func (o *Orchestrator) OrchDir() string { return o.orchDir }
 // ReviewPath returns the path for review_N.md.
 func (o *Orchestrator) ReviewPath(n int) string { return o.reviewPath(n) }
 
-func (o *Orchestrator) plannerLabel() string {
-	if o.planner != nil {
-		return o.planner.prov.Name()
-	}
-	return ""
-}
-func (o *Orchestrator) developerLabel() string {
-	if o.developer != nil {
-		return o.developer.prov.Name()
-	}
-	return ""
-}
-func (o *Orchestrator) reviewerLabel() string {
-	if o.reviewer != nil {
-		return o.reviewer.prov.Name()
-	}
-	return ""
-}
-func (o *Orchestrator) reviewer2Label() string {
-	if o.reviewer2 != nil {
-		return o.reviewer2.prov.Name()
-	}
-	return ""
-}
+func (o *Orchestrator) plannerLabel() string { return o.plannerModel }
+func (o *Orchestrator) developerLabel() string { return o.developerModel }
+func (o *Orchestrator) reviewerLabel() string { return o.reviewerModel }
+func (o *Orchestrator) reviewer2Label() string { return o.reviewer2Model }
 
 // Stubs — to be implemented in later phases.
 

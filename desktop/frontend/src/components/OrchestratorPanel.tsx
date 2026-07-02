@@ -33,12 +33,13 @@ export const OrchestratorPanel = memo(function OrchestratorPanel({ active }: { a
   const totalTasks = state.phases?.reduce((sum, p) => sum + (p?.tasks?.length ?? 0), 0) ?? 0;
 
   const roleLabel = () => {
+    const pct = ` · ${progress}%`;
     switch (state.status) {
-      case "planning": return `${t("orchestrator.planning")} · ${state.plannerLabel || "planner"}`;
-      case "developing": return `${t("orchestrator.developing")} · ${state.developerLabel || "dev"}`;
-      case "reviewing": return `${t("orchestrator.reviewing")} · ${state.reviewerLabel || "reviewer"}`;
-      case "reviewing2": return `${t("orchestrator.reviewing")} · ${state.reviewer2Label || "reviewer2"}`;
-      case "done": return t("orchestrator.done");
+      case "planning": return `${t("orchestrator.planning")} · ${state.plannerLabel || "planner"}${pct}`;
+      case "developing": return `${t("orchestrator.developing")} · ${state.developerLabel || "dev"}${pct}`;
+      case "reviewing": return `${t("orchestrator.reviewing")} · ${state.reviewerLabel || "reviewer"}${pct}`;
+      case "reviewing2": return `${t("orchestrator.reviewing")} · ${state.reviewer2Label || "reviewer2"}${pct}`;
+      case "done": return `${t("orchestrator.done")} · ${progress}%`;
       default: return state.status;
     }
   };
@@ -54,7 +55,6 @@ export const OrchestratorPanel = memo(function OrchestratorPanel({ active }: { a
           {currentPhase ? `${currentPhase.name}` : t("orchestrator.title")}
         </span>
         <span className="orchestrator-panel__status">{roleLabel()}</span>
-        <span className="orchestrator-panel__progress">{progress}%</span>
         <button
           className="orchestrator-panel__toggle"
           onClick={() => setExpanded(!expanded)}
