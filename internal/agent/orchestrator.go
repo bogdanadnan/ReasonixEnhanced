@@ -364,6 +364,7 @@ with text — use ONLY the tool.`, o.planPath(), userInput)
 	planTool := newReportTool("report_plan",
 		"Report planning results back to the orchestrator. Call this when your plan is complete.",
 		json.RawMessage(`{"type":"object","properties":{"phase_count":{"type":"integer"},"task_count":{"type":"integer"}},"required":["phase_count","task_count"]}`))
+	o.journal("PLAN_PROMPT len=%d: %s", len(prompt), strings.ReplaceAll(prompt, "\n", "⏎"))
 	o.planner.tools.Add(planTool)
 	defer o.planner.tools.Remove("report_plan")
 
@@ -494,6 +495,7 @@ issues about workload files — focus ONLY on code/implementation fixes.
 	devTool := newReportTool("report_work",
 		"Report work completion back to the orchestrator. Call this when you're done.",
 		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string"},"summary":{"type":"string"},"rationale":{"type":"string"}},"required":["status","summary"]}`))
+	o.journal("DEV_PROMPT len=%d retries=%d: %s", len(devPrompt), state.Retries, strings.ReplaceAll(devPrompt, "\n", "⏎"))
 	o.developer.tools.Add(devTool)
 	defer o.developer.tools.Remove("report_work")
 
@@ -567,6 +569,7 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 	reviewTool := newReportTool("report_review",
 		"Report your review verdict to the orchestrator. Call this when your review is complete.",
 		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`))
+	o.journal("REVIEW1_PROMPT len=%d: %s", len(reviewPrompt), strings.ReplaceAll(reviewPrompt, "\n", "⏎"))
 	o.reviewer.tools.Add(reviewTool)
 	defer o.reviewer.tools.Remove("report_review")
 
@@ -633,6 +636,7 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 		rev2Tool := newReportTool("report_review",
 			"Report your review verdict to the orchestrator.",
 			json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`))
+		o.journal("REVIEW2_PROMPT len=%d: %s", len(review2Prompt), strings.ReplaceAll(review2Prompt, "\n", "⏎"))
 		o.reviewer2.tools.Add(rev2Tool)
 		defer o.reviewer2.tools.Remove("report_review")
 
