@@ -653,6 +653,7 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 		} else if err := json.Unmarshal(raw2, &verdict2); err != nil {
 			return fmt.Errorf("second reviewer report: %w", err)
 		}
+		o.journal("REVIEW2 verdict=%s issues=%d", verdict2.Status, verdict2.Issues)
 
 		if verdict2.Status != "pass" {
 			combinedPass = false
