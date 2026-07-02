@@ -105,6 +105,19 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 	// Try to resume from a prior interrupted run
 	if state, err := loadState(o.statePath()); err == nil && state.Status != "done" && len(state.Phases) > 0 {
 		slog.Info("orchestrator: resuming from state.json", "phase", state.Phase, "task", state.Task)
+		// Restore labels if they were empty (state.json from older version)
+		if state.PlannerLabel == "" {
+			state.PlannerLabel = o.plannerLabel()
+		}
+		if state.DeveloperLabel == "" {
+			state.DeveloperLabel = o.developerLabel()
+		}
+		if state.ReviewerLabel == "" {
+			state.ReviewerLabel = o.reviewerLabel()
+		}
+		if state.Reviewer2Label == "" && o.reviewer2 != nil {
+			state.Reviewer2Label = o.reviewer2Label()
+		}
 		o.mu.Lock()
 		o.state = state
 		o.mu.Unlock()
@@ -484,20 +497,25 @@ with text — use ONLY the tool.`,
 			return fmt.Errorf("second reviewer: %w", err)
 		}
 
-		var verdict2 struct {
-			Status  string `json:"status"`
-			Issues  int    `json:"issues"`
-			Summary string `json:"summary"`
+		// Register the report tool for reviewer2
+		rev2Tool := newReportTool("report_review",
+			"Report your review verdict to the orchestrator.",
+			json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`))
+		o.reviewer2.tools.Add(rev2Tool)
+		defer o.reviewer2.tools.Remove("report_review")
+		o.reviewer2.Session().Add(provider.Message{Role: provider.RoleUser, Content: "Now call the report_review tool with your verdict."})
+		if err := o.reviewer2.Run(ctx, "Call the report_review tool."); err != nil {
+			return fmt.Errorf("second reviewer report: %w", err)
 		}
-		if err := o.parseStructured(o.lastAssistantText(o.reviewer2), &verdict2); err != nil {
-			nudge := fmt.Sprintf("Your response was not valid JSON. Respond with ONLY: {\"status\":\"pass\",\"summary\":\"...\"} or {\"status\":\"fail\",\"issues\":N,\"summary\":\"...\"}")
-			o.reviewer2.Session().Add(provider.Message{Role: provider.RoleUser, Content: nudge})
-			if err2 := o.reviewer2.Run(ctx, "Review the work again and respond with valid JSON."); err2 != nil {
-				return fmt.Errorf("second reviewer nudge: %w", err2)
+
+		raw2, waitErr2 := rev2Tool.Wait()
+		var verdict2 reviewerReport
+		if waitErr2 != nil {
+			if o.parseStructured(o.lastAssistantText(o.reviewer2), &verdict2) != nil {
+				return fmt.Errorf("second reviewer: %w", waitErr2)
 			}
-			if err3 := o.parseStructured(o.lastAssistantText(o.reviewer2), &verdict2); err3 != nil {
-				return fmt.Errorf("second reviewer after nudge: %w", err3)
-			}
+		} else if err := json.Unmarshal(raw2, &verdict2); err != nil {
+			return fmt.Errorf("second reviewer report: %w", err)
 		}
 
 		if verdict2.Status != "pass" {
