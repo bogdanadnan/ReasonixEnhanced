@@ -464,6 +464,12 @@ with text — use ONLY the tool.`,
 	// The developer gets the union of all issues from all reviewers.
 	combinedPass := verdict.Status == "pass"
 	if o.reviewer2 != nil {
+		state.Status = "reviewing2"
+		o.mu.Lock()
+		o.state = &state
+		o.mu.Unlock()
+		o.saveStateLocked()
+
 		review2Path := o.reviewPath2(state.Task)
 		review2Prompt := fmt.Sprintf(`You are the Second Reviewer. Review ONLY the deliverables the developer
 produced against the workload brief. The first reviewer's review is at %s

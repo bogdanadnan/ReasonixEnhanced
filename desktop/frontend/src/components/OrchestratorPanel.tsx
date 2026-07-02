@@ -37,6 +37,7 @@ export const OrchestratorPanel = memo(function OrchestratorPanel({ active }: { a
       case "planning": return `${t("orchestrator.planning")} · ${state.plannerLabel || "planner"}`;
       case "developing": return `${t("orchestrator.developing")} · ${state.developerLabel || "dev"}`;
       case "reviewing": return `${t("orchestrator.reviewing")} · ${state.reviewerLabel || "reviewer"}`;
+      case "reviewing2": return `${t("orchestrator.reviewing")} · ${state.reviewer2Label || "reviewer2"}`;
       case "done": return t("orchestrator.done");
       default: return state.status;
     }
