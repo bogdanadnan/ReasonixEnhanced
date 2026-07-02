@@ -39,11 +39,15 @@ type Orchestrator struct {
 
 // OrchState is the orchestrator's progress, persisted to state.json.
 type OrchState struct {
-	Phase   int         `json:"phase"`   // 1-based current phase index
-	Task    int         `json:"task"`    // 1-based current task index within phase
-	Phases  []OrchPhase `json:"phases"`  // plan tree
-	Retries int         `json:"retries"` // retries for the current task
-	Status  string      `json:"status"`  // planning | developing | reviewing | done
+	Phase          int         `json:"phase"`
+	Task           int         `json:"task"`
+	Phases         []OrchPhase `json:"phases"`
+	Retries        int         `json:"retries"`
+	Status         string      `json:"status"`
+	PlannerLabel   string      `json:"plannerLabel"`
+	DeveloperLabel string      `json:"developerLabel"`
+	ReviewerLabel  string      `json:"reviewerLabel"`
+	Reviewer2Label string      `json:"reviewer2Label"`
 }
 
 // OrchPhase is one phase of the plan.
@@ -204,6 +208,31 @@ func (o *Orchestrator) OrchDir() string { return o.orchDir }
 // ReviewPath returns the path for review_N.md.
 func (o *Orchestrator) ReviewPath(n int) string { return o.reviewPath(n) }
 
+func (o *Orchestrator) plannerLabel() string {
+	if o.planner != nil {
+		return o.planner.prov.Name()
+	}
+	return ""
+}
+func (o *Orchestrator) developerLabel() string {
+	if o.developer != nil {
+		return o.developer.prov.Name()
+	}
+	return ""
+}
+func (o *Orchestrator) reviewerLabel() string {
+	if o.reviewer != nil {
+		return o.reviewer.prov.Name()
+	}
+	return ""
+}
+func (o *Orchestrator) reviewer2Label() string {
+	if o.reviewer2 != nil {
+		return o.reviewer2.prov.Name()
+	}
+	return ""
+}
+
 // Stubs — to be implemented in later phases.
 
 func (o *Orchestrator) runPlanning(ctx context.Context, userInput string) error {
@@ -248,7 +277,13 @@ User request:
 	slog.Info("orchestrator: plan parsed", "phases", len(phases), "tasks", planResult.TaskCount)
 
 	o.mu.Lock()
-	o.state = &OrchState{Phase: 1, Task: 1, Phases: phases, Status: "developing"}
+	o.state = &OrchState{
+		Phase: 1, Task: 1, Phases: phases, Status: "developing",
+		PlannerLabel:   o.plannerLabel(),
+		DeveloperLabel: o.developerLabel(),
+		ReviewerLabel:  o.reviewerLabel(),
+		Reviewer2Label: o.reviewer2Label(),
+	}
 	o.mu.Unlock()
 	o.mu.Lock()
 	err = o.saveState()
