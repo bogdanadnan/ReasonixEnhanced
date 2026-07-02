@@ -33,13 +33,13 @@ export const OrchestratorPanel = memo(function OrchestratorPanel({ active }: { a
   const totalTasks = state.phases?.reduce((sum, p) => sum + (p?.tasks?.length ?? 0), 0) ?? 0;
 
   const roleLabel = () => {
-    const pct = ` · ${progress}%`;
+    const pct = progress > 0 ? " · " + progress + "%" : "";
     switch (state.status) {
-      case "planning": return `${t("orchestrator.planning")} · ${state.plannerLabel || "planner"}${pct}`;
-      case "developing": return `${t("orchestrator.developing")} · ${state.developerLabel || "dev"}${pct}`;
-      case "reviewing": return `${t("orchestrator.reviewing")} · ${state.reviewerLabel || "reviewer"}${pct}`;
-      case "reviewing2": return `${t("orchestrator.reviewing")} · ${state.reviewer2Label || "reviewer2"}${pct}`;
-      case "done": return `${t("orchestrator.done")} · ${progress}%`;
+      case "planning": return t("orchestrator.planning") + " · " + (state.plannerLabel || "planner") + pct;
+      case "developing": return t("orchestrator.developing") + " · " + (state.developerLabel || "dev") + pct;
+      case "reviewing": return t("orchestrator.reviewing") + " · " + (state.reviewerLabel || "reviewer") + pct;
+      case "reviewing2": return t("orchestrator.reviewing") + " · " + (state.reviewer2Label || "reviewer2") + pct;
+      case "done": return t("orchestrator.done") + " · " + progress + "%";
       default: return state.status;
     }
   };

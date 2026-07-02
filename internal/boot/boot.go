@@ -898,11 +898,13 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 					maxRetries = 3
 				}
 			var reviewer2Agent *agent.Agent
+			var reviewer2ModelName string
 			if cfg.Orchestrator.SecondReviewerModel != "" {
 				re2, ok := cfg.ResolveModel(cfg.Orchestrator.SecondReviewerModel)
 				if !ok {
 					return nil, fmt.Errorf("orchestrator.second_reviewer_model %q is not a configured provider", cfg.Orchestrator.SecondReviewerModel)
 				}
+				reviewer2ModelName = re2.Model
 				rev2Prov, err := NewProviderWithProxy(re2, proxySpec)
 				if err != nil {
 					return nil, fmt.Errorf("orchestrator second reviewer %q: %w", cfg.Orchestrator.SecondReviewerModel, err)
@@ -929,7 +931,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 					PlannerModel:   pe.Model,
 					DeveloperModel: entry.Model,
 					ReviewerModel:  re.Model,
-					Reviewer2Model: "",
+					Reviewer2Model: reviewer2ModelName,
 					OrchDir:        filepath.Join(root, ".reasonix", "orchestrator"),
 					MaxRetries:     maxRetries,
 					AutoCommit:     cfg.Orchestrator.AutoCommit,
