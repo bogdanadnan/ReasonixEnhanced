@@ -675,15 +675,6 @@ func (o *Orchestrator) advanceTask(ctx context.Context) error {
 	phase.Done = append(phase.Done, taskName)
 	o.state.Task++
 	o.state.Retries = 0
-	o.state.DevDone = false
-	o.state.ReviewDone = false
-	o.state.Review2Done = false
-
-	// Clear the developer session to prevent old messages from leaking
-	msgs := o.developer.Session().Snapshot()
-	if len(msgs) > 1 {
-		o.developer.Session().Replace(msgs[:1]) // keep only system prompt
-	}
 
 	if o.state.Task > len(phase.Tasks) {
 		o.state.Phase++
