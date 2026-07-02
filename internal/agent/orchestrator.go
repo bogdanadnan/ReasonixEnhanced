@@ -568,7 +568,7 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 	reviewTool := newReportTool("report_review",
 		"Report your review verdict to the orchestrator. Call this when your review is complete.",
 		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`))
-	o.journal("REVIEW1_PROMPT len=%d: %s", len(reviewPrompt), strings.ReplaceAll(reviewPrompt, "\n", "⏎"))
+	o.journal("REVIEW1_PROMPT task=%d len=%d: %s", state.Task, len(reviewPrompt), strings.ReplaceAll(reviewPrompt, "\n", "⏎"))
 	o.reviewer.tools.Add(reviewTool)
 	defer o.reviewer.tools.Remove("report_review")
 
@@ -592,7 +592,7 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 	}
 
 	state.ReviewDone = true
-	o.journal("REVIEW1 verdict=%s issues=%d", verdict.Status, verdict.Issues)
+	o.journal("REVIEW1 verdict=%s task=%d issues=%d", verdict.Status, state.Task, verdict.Issues)
 	o.mu.Lock()
 	o.state = &state
 	o.mu.Unlock()
@@ -635,7 +635,7 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 		rev2Tool := newReportTool("report_review",
 			"Report your review verdict to the orchestrator.",
 			json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`))
-		o.journal("REVIEW2_PROMPT len=%d: %s", len(review2Prompt), strings.ReplaceAll(review2Prompt, "\n", "⏎"))
+		o.journal("REVIEW2_PROMPT task=%d len=%d: %s", state.Task, len(review2Prompt), strings.ReplaceAll(review2Prompt, "\n", "⏎"))
 		o.reviewer2.tools.Add(rev2Tool)
 		defer o.reviewer2.tools.Remove("report_review")
 
@@ -652,7 +652,7 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 		} else if err := json.Unmarshal(raw2, &verdict2); err != nil {
 			return fmt.Errorf("second reviewer report: %w", err)
 		}
-		o.journal("REVIEW2 verdict=%s issues=%d", verdict2.Status, verdict2.Issues)
+		o.journal("REVIEW2 verdict=%s task=%d issues=%d", verdict2.Status, state.Task, verdict2.Issues)
 
 		if verdict2.Status != "pass" {
 			combinedPass = false
