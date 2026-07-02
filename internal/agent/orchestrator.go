@@ -514,11 +514,11 @@ issues about workload files — focus ONLY on code/implementation fixes.
 `, state.Retries, paths)
 	}
 
-	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nOnly implement what the brief asks for — do NOT work ahead on future tasks.\nRead existing code with read_file before editing. Run build/tests with bash after changes.%s%s\n\nEvery item in the brief must be fully covered. Any deviation, omission, or\nshortcut will cause the reviewer to FAIL your submission unless you document it in the rationale parameter of the report_work tool.\n\nWhen done, call the report_work tool with:\n- status: \"done\"\n- summary: brief summary of what you implemented\n- rationale: explanation of any deviations, skipped items, or key decisions\nDo NOT write files manually — the tool handles that. Do NOT respond with text — use ONLY the tool.",
+	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nOnly implement what the brief asks for — do NOT work ahead on future tasks.\nRead existing code with read_file before editing. Run build/tests with bash after changes.%s%s\n\nEvery item in the brief must be fully covered. Any deviation, omission, or\nshortcut will cause the reviewer to FAIL your submission unless you document it in the rationale parameter of the report_work tool.\n\nWhen done, call the report_work tool with:\n- status: \"done\"\n- summary: brief summary of what you implemented\n- rationale: explanation of any deviations, skipped items, or key decisions\n\nAfter calling report_work, stop immediately — your turn is complete.\nDo NOT call any other tools after report_work.",
 		o.briefPath(), reviewNudge, commitInstr)
 
 	devTool := newReportTool("report_work",
-		"Report work completion back to the orchestrator. Call this when you're done.",
+		"Report work completion to the orchestrator. After calling this tool, respond with only 'done' — nothing else.",
 		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string"},"summary":{"type":"string"},"rationale":{"type":"string"}},"required":["status","summary"]}`))
 	o.journal("DEV_PROMPT len=%d retries=%d: %s", len(devPrompt), state.Retries, strings.ReplaceAll(devPrompt, "\n", "⏎"))
 	o.developer.tools.Add(devTool)
