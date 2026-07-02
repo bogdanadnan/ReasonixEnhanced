@@ -380,33 +380,40 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 	o.saveStateLocked()
 
 	reviewPath := o.reviewPath(state.Task)
-	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Review the work the developer just completed.
+	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Review ONLY the code changes the developer produced.
+IGNORE the workload_done.md and workload_rationale.md files — those are
+for the orchestrator's tracking, not part of the deliverables. Your job
+is to verify that the actual code changes meet the task requirements.
+
 Read:
-  1. The workload brief at %s
-  2. The developer's completion at %s
-  3. The developer's rationale at %s — CHALLENGE this. Every "could not" or
-     "chose not to" is a claim you must verify independently. If you find
-     a viable alternative, describe it in pseudocode or as concrete steps.
-  4. The actual code changes using bash: git diff
+  1. The workload brief at %s — this is THE deliverable spec
+  2. The actual code changes using bash: git diff, git log -1, and
+     read_file on changed files — this is what you're reviewing
+
+Do NOT read workload_done.md or workload_rationale.md. They are NOT part
+of the deliverable and NOT your concern. Base your review entirely on:
+
+- Does the code implement what the workload brief asked for?
+- Are there correctness issues, edge cases missed, error handling gaps?
+- Does it build? Do tests pass?
 
 IMPORTANT: You are a READ-ONLY reviewer. Never edit or write code files.
-Use pseudocode, step-by-step instructions, or code snippets (fenced) to
-illustrate alternatives — the developer will implement them.
+Use pseudocode or step-by-step instructions to illustrate alternatives.
 
 Write your review to %s with this format:
 ## Verdict: PASS or FAIL
 ## Summary
-Brief summary of your assessment.
-## Rationale assessment (always include)
-For each claim in the rationale: whether you verified it, whether you agree,
-and any alternatives you found (as pseudocode or concrete steps, not code edits).
-## Issues (if FAIL or rationale challenged)
-1. Issue description (prefix with [RATIONALE] if it stems from a challenged claim)
+Brief summary of your assessment of the CODE changes.
+## Issues (if FAIL)
+1. Issue description
 2. Issue description
 
-After writing the review file, respond with ONLY valid JSON:
-{"status": "pass", "summary": "..."} or {"status": "fail", "issues": N, "summary": "..."}`,
-		o.briefPath(), o.donePath(), o.rationalePath(), reviewPath)
+DO NOT mention workload_done.md, workload_rationale.md, or any metadata
+in your review. Focus exclusively on the code.
+
+After writing the review file, call the report_review tool. Do NOT respond
+with text — use ONLY the tool.`,
+		o.briefPath(), reviewPath)
 
 	var verdict reviewerReport
 	reviewTool := newReportTool("report_review",
@@ -440,36 +447,36 @@ After writing the review file, respond with ONLY valid JSON:
 	combinedPass := verdict.Status == "pass"
 	if o.reviewer2 != nil {
 		review2Path := o.reviewPath2(state.Task)
-		review2Prompt := fmt.Sprintf(`You are the Second Reviewer. The first reviewer reviewed this
-work (see their review at %s) and gave a %s. Independently
-verify their assessment — they may have missed issues or been too lenient.
+		review2Prompt := fmt.Sprintf(`You are the Second Reviewer. Review ONLY the code changes the developer produced.
+The first reviewer's review is at %s (verdict: %s).
 
 Read:
-  1. The workload brief at %s
-  2. The developer's completion at %s
-  3. The developer's rationale at %s
-  4. The first reviewer's review at %s — EXAMINE their reasoning for gaps
-  5. The actual code changes using bash: git diff
+  1. The workload brief at %s — this is THE deliverable spec
+  2. The first reviewer's review at %s — examine for gaps but don't re-litigate
+  3. The actual code changes using bash: git diff, git log -1, and read_file
 
-IMPORTANT: You are READ-ONLY. Never edit or write code files.
+Do NOT read workload_done.md or workload_rationale.md — they are metadata,
+not deliverables.
+
 If you find issues the first reviewer missed, or disagree with their
-rationale assessment, document why. Do NOT repeat issues from the first
-review unless you have additional context to add.
+assessment of the CODE, document why. Do NOT repeat issues unless you
+have additional context.
+
+IMPORTANT: You are READ-ONLY. Never edit or write code.
 
 Write your review to %s with this format:
 ## Verdict: PASS or FAIL
 ## Summary
-Brief summary of your assessment.
-## Analysis of first review (always include)
-Whether you agree with the first reviewer's verdict and why. If you
-found missed issues or disagree with their rationale assessment, explain.
+Brief summary. If you disagree with the first reviewer, explain why.
 ## Issues (if FAIL)
-1. Issue description (prefix with [MISSED] if first reviewer didn't flag this)
-2. Issue description
+1. Issue (prefix [MISSED] if first reviewer didn't flag)
+2. Issue
 
-After writing the review file, respond with ONLY valid JSON:
-{"status": "pass", "summary": "..."} or {"status": "fail", "issues": N, "summary": "..."}`,
-			reviewPath, verdict.Status, o.briefPath(), o.donePath(), o.rationalePath(), reviewPath, review2Path,
+DO NOT mention workload_done.md, workload_rationale.md, or any metadata.
+
+After writing the review file, call the report_review tool. Do NOT respond
+with text — use ONLY the tool.`,
+			reviewPath, verdict.Status, o.briefPath(), reviewPath, review2Path,
 		)
 
 		if err := o.reviewer2.Run(ctx, review2Prompt); err != nil {
@@ -712,17 +719,22 @@ var (
 
 // ReviewerSystemPrompt returns the system prompt for the reviewer agent.
 func ReviewerSystemPrompt() string {
-	return `You are a code reviewer in a developer orchestrator. Review the work
-the developer just completed against the task brief. Be thorough but concise:
-check correctness, edge cases, error handling, and adherence to the task.
+	return `You are a code reviewer in a developer orchestrator. Review ONLY the actual
+code changes the developer produced — never review metadata files like
+workload_done.md or workload_rationale.md. Those are for the orchestrator,
+not part of the deliverable.
+
+Base your review on the workload brief (what was asked) and the actual
+code changes (what was delivered). Check correctness, edge cases, error
+handling, build/test pass, and adherence to the task requirements.
 
 Use bash to run git diff and git log to see what changed. Read modified files
 with read_file. Do NOT edit or write code files yourself — you are read-only.
 When proposing alternatives, use pseudocode, step-by-step instructions, or
 fenced code snippets as hints. The developer will implement them.
 
-Write your review to the file path given in the prompt, then respond with a
-JSON object containing your verdict.`
+Write your review to the file path given in the prompt, then call the
+report_review tool with your verdict.`
 }
 
 // ReviewerToolRegistry returns the tool set for the reviewer: read-only tools
