@@ -697,6 +697,20 @@ func parsePlan(path string) ([]OrchPhase, error) {
 			}
 			cur.Tasks = append(cur.Tasks, task)
 		}
+		// Also handle ### - [ ] (H3 + checkbox) and **Task 4a.1:** format
+		if strings.Contains(line, "- [ ]") && !strings.HasPrefix(line, "- [") {
+			rest := line[strings.Index(line, "- [ ]"):]
+			task := strings.TrimPrefix(rest, "- [ ]")
+			task = strings.TrimPrefix(task, " ")
+			cur.Tasks = append(cur.Tasks, task)
+		}
+		if strings.Contains(line, "- [x]") && !strings.HasPrefix(line, "- [x") {
+			rest := line[strings.Index(line, "- [x]"):]
+			task := strings.TrimPrefix(rest, "- [x]")
+			task = strings.TrimPrefix(task, " ")
+			cur.Done = append(cur.Done, task)
+			cur.Tasks = append(cur.Tasks, task)
+		}
 	}
 	if len(phases) == 0 {
 		return nil, fmt.Errorf("plan.md contains no ## Phase headings")

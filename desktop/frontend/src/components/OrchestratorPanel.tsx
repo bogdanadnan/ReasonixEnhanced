@@ -54,6 +54,7 @@ export const OrchestratorPanel = memo(function OrchestratorPanel({ active }: { a
         <span className="orchestrator-panel__title">
           {currentPhase ? `${currentPhase.name}` : t("orchestrator.title")}
         </span>
+        {' · '}
         <span className="orchestrator-panel__status">{roleLabel()}</span>
         <button
           className="orchestrator-panel__toggle"
