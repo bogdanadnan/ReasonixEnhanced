@@ -202,9 +202,13 @@ Call the report_plan tool with your results.`,
 		if finalVerdict.Status == "fail" {
 			slog.Info("orchestrator: final review found issues, restarting", "issues", finalVerdict.Issues)
 			o.cleanOrchDir()
-			// Re-run planning with the fix tasks appended to the original plan
 			return o.Run(ctx, "Fix the issues found in the final review: "+finalVerdict.Summary)
 		}
+		// Final review passed — mark truly done
+		o.mu.Lock()
+		o.state.Status = "done"
+		o.mu.Unlock()
+		o.saveStateLocked()
 	}
 
 	slog.Info("orchestrator: done")
