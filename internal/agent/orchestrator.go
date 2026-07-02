@@ -391,8 +391,12 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 	if o.autoCommit {
 		reviewDiffInstr = "if this is a git repo, use `git log -1 -p` to see committed changes"
 	}
-	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Review ONLY the code changes the developer produced
-(%s). Also inspect the changed files directly with read_file.
+	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Review ONLY the deliverables the developer produced
+against the workload brief (%s). The developer may have produced code,
+documentation, configuration, or other artifacts — judge what was delivered,
+not the format.
+
+%s. Also inspect the changed files directly with read_file.
 
 Read the workload brief at %s — this is THE deliverable spec.
 
@@ -402,14 +406,14 @@ Use pseudocode or step-by-step instructions to illustrate alternatives.
 Write your review to %s with this format:
 ## Verdict: PASS or FAIL
 ## Summary
-Brief summary of your assessment of the CODE changes.
+Brief summary of your assessment.
 ## Issues (if FAIL)
 1. Issue description
 2. Issue description
 
 After writing the review file, call the report_review tool. Do NOT respond
 with text — use ONLY the tool.`,
-		reviewDiffInstr, o.briefPath(), reviewPath)
+		o.briefPath(), reviewDiffInstr, o.briefPath(), reviewPath)
 
 	var verdict reviewerReport
 	reviewTool := newReportTool("report_review",
@@ -443,22 +447,23 @@ with text — use ONLY the tool.`,
 	combinedPass := verdict.Status == "pass"
 	if o.reviewer2 != nil {
 		review2Path := o.reviewPath2(state.Task)
-		review2Prompt := fmt.Sprintf(`You are the Second Reviewer. Review ONLY the code changes the developer produced.
-The first reviewer's review is at %s (verdict: %s).
+		review2Prompt := fmt.Sprintf(`You are the Second Reviewer. Review ONLY the deliverables the developer
+produced against the workload brief. The first reviewer's review is at %s
+(verdict: %s).
 
 Read:
   1. The workload brief at %s — this is THE deliverable spec
   2. The first reviewer's review at %s — examine for gaps but don't re-litigate
-  3. The actual code changes using bash: git diff, git log -1, and read_file
+  3. The actual changes — use read_file and (if git) git diff
 
 Do NOT read workload_done.md or workload_rationale.md — they are metadata,
 not deliverables.
 
 If you find issues the first reviewer missed, or disagree with their
-assessment of the CODE, document why. Do NOT repeat issues unless you
-have additional context.
+assessment, document why. Do NOT repeat issues unless you have
+additional context.
 
-IMPORTANT: You are READ-ONLY. Never edit or write code.
+IMPORTANT: You are READ-ONLY. Never edit or write files.
 
 Write your review to %s with this format:
 ## Verdict: PASS or FAIL
@@ -715,19 +720,20 @@ var (
 
 // ReviewerSystemPrompt returns the system prompt for the reviewer agent.
 func ReviewerSystemPrompt() string {
-	return `You are a code reviewer in a developer orchestrator. Review ONLY the actual
-code changes the developer produced — never review metadata files like
-workload_done.md or workload_rationale.md. Those are for the orchestrator,
-not part of the deliverable.
+	return `You are a code reviewer in a developer orchestrator. Review ONLY the
+deliverables the developer produced against the workload brief — the
+developer may have produced code, documentation, configuration, or
+other artifacts.
 
-Base your review on the workload brief (what was asked) and the actual
-code changes (what was delivered). Check correctness, edge cases, error
-handling, build/test pass, and adherence to the task requirements.
+Check correctness, edge cases, error handling, build/test pass, and
+adherence to the task requirements. Never review metadata files like
+workload_done.md or workload_rationale.md — those are for the
+orchestrator, not part of the deliverable.
 
-Use bash to run git diff and git log to see what changed. Read modified files
-with read_file. Do NOT edit or write code files yourself — you are read-only.
-When proposing alternatives, use pseudocode, step-by-step instructions, or
-fenced code snippets as hints. The developer will implement them.
+Use bash to run git diff and git log to see what changed. Read modified
+files with read_file. Do NOT edit or write files yourself — you are
+read-only. When proposing alternatives, use pseudocode or step-by-step
+instructions. The developer will implement them.
 
 Write your review to the file path given in the prompt, then call the
 report_review tool with your verdict.`
