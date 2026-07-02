@@ -740,6 +740,10 @@ export interface OrchState {
   phases: OrchPhase[];
   retries: number;
   status: string;
+  plannerLabel: string;
+  developerLabel: string;
+  reviewerLabel: string;
+  reviewer2Label: string;
 }
 
 export interface BotAllowlistView {

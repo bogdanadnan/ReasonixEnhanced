@@ -44,15 +44,6 @@ export const OrchestratorPanel = memo(function OrchestratorPanel({ active }: { a
   const doneTasks = state.phases?.reduce((sum, p) => sum + (p?.done?.length ?? 0), 0) ?? 0;
   const progress = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
-  const statusLabel = () => {
-    switch (state.status) {
-      case "planning": return t("orchestrator.planning");
-      case "developing": return t("orchestrator.developing");
-      case "reviewing": return t("orchestrator.reviewing");
-      case "done": return t("orchestrator.done");
-      default: return state.status;
-    }
-  };
 
   return (
     <div className="orchestrator-panel">
