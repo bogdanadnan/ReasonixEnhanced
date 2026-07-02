@@ -511,8 +511,8 @@ issues about workload files — focus ONLY on code/implementation fixes.
 `, state.Retries, paths)
 	}
 
-	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nOnly implement what the brief asks for — do NOT work ahead on future tasks.\nRead existing code with read_file before editing. Run build/tests with bash after changes.%s%s\n\nEvery item in the brief must be fully covered. Any deviation, omission, or\nshortcut will cause the reviewer to FAIL your submission unless you document\nit with a clear rationale in %s. Your rationale must explain WHY the deviation\nwas necessary and why no better alternative exists.\n\nWhen done, write a completion summary to %s. Then call the report_work tool with:\n- status: \"done\"\n- summary: brief summary of what you did\n- rationale: explanation of any deviations, skipped items, or key decisions\nDo NOT respond with text — use ONLY the tool.",
-		o.briefPath(), reviewNudge, commitInstr, o.rationalePath(), o.donePath())
+	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nOnly implement what the brief asks for — do NOT work ahead on future tasks.\nRead existing code with read_file before editing. Run build/tests with bash after changes.%s%s\n\nEvery item in the brief must be fully covered. Any deviation, omission, or\nshortcut will cause the reviewer to FAIL your submission unless you document it in the rationale parameter of the report_work tool.\n\nWhen done, call the report_work tool with:\n- status: \"done\"\n- summary: brief summary of what you implemented\n- rationale: explanation of any deviations, skipped items, or key decisions\nDo NOT write files manually — the tool handles that. Do NOT respond with text — use ONLY the tool.",
+		o.briefPath(), reviewNudge, commitInstr)
 
 	devTool := newReportTool("report_work",
 		"Report work completion back to the orchestrator. Call this when you're done.",
@@ -533,7 +533,14 @@ issues about workload files — focus ONLY on code/implementation fixes.
 			raw = json.RawMessage(text)
 		}
 	}
-	// Parse just to verify; developer output is secondary
+	// Write workload_done.md and workload_rationale.md from the report
+	var devReport developerReport
+	if err := json.Unmarshal(raw, &devReport); err == nil {
+		os.WriteFile(o.donePath(), []byte(devReport.Summary), 0o644)
+		if devReport.Rationale != "" {
+			os.WriteFile(o.rationalePath(), []byte(devReport.Rationale), 0o644)
+		}
+	}
 
 	state.DevDone = true
 	state.ReviewDone = false
