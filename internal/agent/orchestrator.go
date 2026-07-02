@@ -151,6 +151,9 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 		return nil
 	}
 
+	// Fresh run: clean stale files from any previous session
+	o.cleanOrchDir()
+
 	// Fresh run: planning phase
 	if err := o.runPlanning(ctx, userInput); err != nil {
 		return fmt.Errorf("orchestrator: planning phase: %w", err)
@@ -246,6 +249,20 @@ func (o *Orchestrator) OrchDir() string { return o.orchDir }
 
 // ReviewPath returns the path for review_N.md.
 func (o *Orchestrator) ReviewPath(n int) string { return o.reviewPath(n) }
+
+// cleanOrchDir removes all session-specific files from the orchestrator
+// directory before starting a fresh run.
+func (o *Orchestrator) cleanOrchDir() {
+	for _, path := range []string{
+		o.statePath(), o.briefPath(), o.donePath(), o.rationalePath(), o.planPath(),
+	} {
+		os.Remove(path)
+	}
+	for i := 1; i < 100; i++ {
+		os.Remove(o.reviewPath(i))
+		os.Remove(o.reviewPath2(i))
+	}
+}
 
 func (o *Orchestrator) plannerLabel() string { return o.plannerModel }
 func (o *Orchestrator) developerLabel() string { return o.developerModel }
