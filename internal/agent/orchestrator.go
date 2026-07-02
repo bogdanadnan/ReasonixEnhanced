@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"reasonix/internal/provider"
 	"reasonix/internal/tool"
@@ -255,6 +256,21 @@ func (o *Orchestrator) reviewPath2(n int) string {
 	return filepath.Join(o.orchDir, fmt.Sprintf("review_%d_b.md", n))
 }
 
+func (o *Orchestrator) journalPath() string {
+	return filepath.Join(o.orchDir, "orchestrator.log")
+}
+
+func (o *Orchestrator) journal(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	f, err := os.OpenFile(o.journalPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%s %s\n", time.Now().Format("15:04:05.000"), msg)
+	slog.Info("orchestrator: " + msg)
+}
+
 // saveState persists the current state to state.json.
 // Caller must hold o.mu if the state may be modified concurrently.
 func (o *Orchestrator) saveState() error {
@@ -438,6 +454,7 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 	// --- DEVELOPING ---
 	if !state.DevDone {
 	slog.Info("orchestrator: developing", "phase", state.Phase, "task", state.Task, "name", taskName, "retries", state.Retries)
+	o.journal("TASK_START phase=%d task=%d name=%q retries=%d", state.Phase, state.Task, taskName, state.Retries)
 	state.Status = "developing"
 	o.mu.Lock()
 	o.state = &state
@@ -497,6 +514,7 @@ issues about workload files — focus ONLY on code/implementation fixes.
 	state.DevDone = true
 	state.ReviewDone = false
 	state.Review2Done = false
+	o.journal("DEV_DONE task=%q", taskName)
 	o.mu.Lock()
 	o.state = &state
 	o.mu.Unlock()
@@ -519,6 +537,10 @@ issues about workload files — focus ONLY on code/implementation fixes.
 workload brief is not fully implemented. FAIL for ANY issue — correctness,
 performance, code quality, edge cases, error handling, missing tests.
 
+Also flag potential FUTURE issues: architectural concerns, tech debt,
+code that will cause problems later even if it works now. These are
+valid reasons to FAIL — explain why the issue will cause future harm.
+
 The developer may have written a rationale at %s explaining why something
 was skipped or done differently. Read it. You may accept a deviation ONLY if:
 1. The rationale clearly explains WHY it was necessary, AND
@@ -536,7 +558,7 @@ Write your review to %s:
 ## Verdict: PASS or FAIL
 ## Summary
 ## Issues (if FAIL)
-1. Issue (prefix [RATIONALE] if you're challenging a rationale claim)
+1. Issue (prefix [RATIONALE] for challenged rationale, [FUTURE] for forward-looking concerns)
 
 After writing, call the report_review tool. Do NOT respond with text.`,
 		o.rationalePath(), o.briefPath(), reviewDiffInstr, reviewPath)
@@ -568,6 +590,7 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 	}
 
 	state.ReviewDone = true
+	o.journal("REVIEW1 verdict=%s issues=%d", verdict.Status, verdict.Issues)
 	o.mu.Lock()
 	o.state = &state
 	o.mu.Unlock()
@@ -633,6 +656,7 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 	}
 
 	if combinedPass {
+		o.journal("ALL_PASS task=%q", taskName)
 		slog.Info("orchestrator: all reviewers pass", "task", taskName)
 		return o.advanceTask(ctx)
 	}
