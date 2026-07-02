@@ -218,6 +218,11 @@ func (o *Orchestrator) State() *OrchState {
 	return &cp
 }
 
+// SetDeveloper replaces the developer agent (called when the user switches models).
+func (o *Orchestrator) SetDeveloper(a *Agent) {
+	o.developer = a
+}
+
 // OrchDir returns the orchestrator working directory.
 func (o *Orchestrator) OrchDir() string { return o.orchDir }
 

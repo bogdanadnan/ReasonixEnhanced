@@ -1356,6 +1356,11 @@ func LoadForRoot(root string) (*Config, error) {
 	cfg.Providers = providers
 	cfg.Desktop.ProviderAccess = mergeProviderAccess(tomlSources, cfg.Desktop.ProviderAccess)
 
+	// Same for [orchestrator]: the global config's orchestrator section
+	// gets overwritten by a project reasonix.toml that doesn't have one.
+	// Re-merge so the global enabled/reviewer_model survives.
+	mergeOrchestratorFromSources(cfg, tomlSources)
+
 	// Claude Code's .mcp.json (project root) is read last and merged into
 	// [[plugins]], so a server configured for Claude works here unchanged.
 	// reasonix.toml wins on a name collision (see mergeMCPJSON).
@@ -1554,6 +1559,28 @@ func mergeProviderAccess(paths []string, existing []string) []string {
 		}
 	}
 	return existing
+}
+
+// mergeOrchestratorFromSources ensures the orchestrator config from earlier
+// sources (global) survives when a later source (project) doesn't define it.
+func mergeOrchestratorFromSources(cfg *Config, paths []string) {
+	if cfg.Orchestrator.Enabled || cfg.Orchestrator.ReviewerModel != "" {
+		return // already set by the last file, no need to merge
+	}
+	// Walk sources in order; the FIRST one that has orchestrator config wins
+	for _, path := range paths {
+		if _, err := os.Stat(path); err != nil {
+			continue
+		}
+		var f Config
+		if _, err := toml.DecodeFile(path, &f); err != nil {
+			continue
+		}
+		if f.Orchestrator.Enabled || f.Orchestrator.ReviewerModel != "" {
+			cfg.Orchestrator = f.Orchestrator
+			return
+		}
+	}
 }
 
 // LoadForEdit returns a config to seed the `reasonix setup` wizard when reconfiguring:
