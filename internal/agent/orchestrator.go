@@ -355,7 +355,7 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 
 	commitInstr := ""
 	if o.autoCommit {
-		commitInstr = "\n\nBefore you finish, commit your changes: `git add -A && git commit -m \"[orchestrator] " + taskName + "\"`. The reviewer expects a clean commit to diff against."
+		commitInstr = "\n\nBefore you finish: if this is a git repository, commit your changes with `git add -A && git commit -m \"[orchestrator] " + taskName + "\"`. The reviewer needs a clean baseline to diff against."
 	}
 	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nRead existing code with read_file before editing. Run build/tests with bash after changes.\n\nIf there is a review history, address any issues from the latest review_N.md.\nIf you cannot or choose not to implement any aspect, document it with rationale in %s.%s\n\nWhen done, write a completion summary to %s and a rationale file at %s explaining any skipped items, deliberate deviations, or design choices the reviewer should know about. Then call the report_work tool. Do NOT respond with text — use ONLY the tool.",
 		o.briefPath(), o.rationalePath(), commitInstr, o.donePath(), o.rationalePath())
@@ -387,15 +387,14 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 	o.saveStateLocked()
 
 	reviewPath := o.reviewPath(state.Task)
-	reviewDiffInstr := "use `git diff` to see what changed"
+	reviewDiffInstr := "if this is a git repo, use `git diff` to see what changed"
 	if o.autoCommit {
-		reviewDiffInstr = "changes are already committed — use `git log -1 -p` to see them"
+		reviewDiffInstr = "if this is a git repo, use `git log -1 -p` to see committed changes"
 	}
-	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Review ONLY the code changes the developer produced.
-%s.
+	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Review ONLY the code changes the developer produced
+(%s). Also inspect the changed files directly with read_file.
 
 Read the workload brief at %s — this is THE deliverable spec.
-Read the actual code using read_file on changed files.
 
 IMPORTANT: You are a READ-ONLY reviewer. Do NOT commit, push, or write code.
 Use pseudocode or step-by-step instructions to illustrate alternatives.
