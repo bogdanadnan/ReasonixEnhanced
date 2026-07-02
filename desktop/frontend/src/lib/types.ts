@@ -726,6 +726,7 @@ export interface OrchestratorSettingsView {
   reviewerModel: string;
   secondReviewerModel: string;
   maxRetries: number;
+  autoCommit: boolean;
 }
 
 export interface OrchPhase {

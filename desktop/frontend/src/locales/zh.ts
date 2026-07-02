@@ -841,6 +841,8 @@ export const zh: Record<DictKey, string> = {
   "settings.orchestratorSecondReviewerModelNone": "无（单一审查者）",
   "settings.orchestratorMaxRetries": "最大重试次数",
   "settings.orchestratorMaxRetriesHint": "审查失败后开发者最多可重试的次数。",
+  "settings.orchestratorAutoCommit": "自动提交变更",
+  "settings.orchestratorAutoCommitHint": "启用后，开发者将在每个任务完成后自动 git commit，以便审查者有干净的 diff 可供检查。",
   "settings.reasoningLanguage": "思考语言",
   "settings.reasoningLanguageHint": "只影响可见思考过程。自动跟随对话语言，不额外注入语言指令。",
   "settings.reasoningLanguage.auto": "自动",

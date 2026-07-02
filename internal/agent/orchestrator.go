@@ -32,6 +32,7 @@ type Orchestrator struct {
 
 	orchDir    string
 	maxRetries int
+	autoCommit bool
 
 	state *OrchState
 	mu    sync.Mutex
@@ -65,6 +66,7 @@ type OrchestratorOptions struct {
 	Reviewer2  *Agent // optional second reviewer (nil = disabled)
 	OrchDir    string
 	MaxRetries int
+	AutoCommit bool
 }
 
 // NewOrchestrator creates an orchestrator. Callers must ensure all three agents
@@ -87,6 +89,7 @@ func NewOrchestrator(opts OrchestratorOptions) *Orchestrator {
 		reviewer2:  opts.Reviewer2,
 		orchDir:    orchDir,
 		maxRetries: opts.MaxRetries,
+		autoCommit: opts.AutoCommit,
 	}
 }
 
@@ -350,8 +353,12 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 		return err
 	}
 
-	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nRead existing code with read_file before editing. Run build/tests with bash after changes.\n\nIf there is a review history, address any issues from the latest review_N.md.\nIf you cannot or choose not to implement any aspect, document it with rationale in %s.\n\nWhen done, write a completion summary to %s and a rationale file at %s explaining any skipped items, deliberate deviations, or design choices the reviewer should know about. Then call the report_work tool. Do NOT respond with text — use ONLY the tool.",
-		o.briefPath(), o.rationalePath(), o.donePath(), o.rationalePath())
+	commitInstr := ""
+	if o.autoCommit {
+		commitInstr = "\n\nBefore you finish, commit your changes: `git add -A && git commit -m \"[orchestrator] " + taskName + "\"`. The reviewer expects a clean commit to diff against."
+	}
+	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nRead existing code with read_file before editing. Run build/tests with bash after changes.\n\nIf there is a review history, address any issues from the latest review_N.md.\nIf you cannot or choose not to implement any aspect, document it with rationale in %s.%s\n\nWhen done, write a completion summary to %s and a rationale file at %s explaining any skipped items, deliberate deviations, or design choices the reviewer should know about. Then call the report_work tool. Do NOT respond with text — use ONLY the tool.",
+		o.briefPath(), o.rationalePath(), commitInstr, o.donePath(), o.rationalePath())
 
 	devTool := newReportTool("report_work",
 		"Report work completion back to the orchestrator. Call this when you're done.",
@@ -380,24 +387,17 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 	o.saveStateLocked()
 
 	reviewPath := o.reviewPath(state.Task)
+	reviewDiffInstr := "use `git diff` to see what changed"
+	if o.autoCommit {
+		reviewDiffInstr = "changes are already committed — use `git log -1 -p` to see them"
+	}
 	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Review ONLY the code changes the developer produced.
-IGNORE the workload_done.md and workload_rationale.md files — those are
-for the orchestrator's tracking, not part of the deliverables. Your job
-is to verify that the actual code changes meet the task requirements.
+%s.
 
-Read:
-  1. The workload brief at %s — this is THE deliverable spec
-  2. The actual code changes using bash: git diff, git log -1, and
-     read_file on changed files — this is what you're reviewing
+Read the workload brief at %s — this is THE deliverable spec.
+Read the actual code using read_file on changed files.
 
-Do NOT read workload_done.md or workload_rationale.md. They are NOT part
-of the deliverable and NOT your concern. Base your review entirely on:
-
-- Does the code implement what the workload brief asked for?
-- Are there correctness issues, edge cases missed, error handling gaps?
-- Does it build? Do tests pass?
-
-IMPORTANT: You are a READ-ONLY reviewer. Never edit or write code files.
+IMPORTANT: You are a READ-ONLY reviewer. Do NOT commit, push, or write code.
 Use pseudocode or step-by-step instructions to illustrate alternatives.
 
 Write your review to %s with this format:
@@ -408,12 +408,9 @@ Brief summary of your assessment of the CODE changes.
 1. Issue description
 2. Issue description
 
-DO NOT mention workload_done.md, workload_rationale.md, or any metadata
-in your review. Focus exclusively on the code.
-
 After writing the review file, call the report_review tool. Do NOT respond
 with text — use ONLY the tool.`,
-		o.briefPath(), reviewPath)
+		reviewDiffInstr, o.briefPath(), reviewPath)
 
 	var verdict reviewerReport
 	reviewTool := newReportTool("report_review",

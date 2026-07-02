@@ -928,6 +928,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 					Reviewer2:  reviewer2Agent,
 					OrchDir:    filepath.Join(root, ".reasonix", "orchestrator"),
 					MaxRetries: maxRetries,
+					AutoCommit: cfg.Orchestrator.AutoCommit,
 				})
 				runner = orch
 				label = entry.Model + " + planner " + pe.Model + " + reviewer " + re.Name

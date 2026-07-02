@@ -879,10 +879,11 @@ type AgentConfig struct {
 
 // OrchestratorConfig controls the planner-developer-reviewer orchestrator.
 type OrchestratorConfig struct {
-	Enabled            bool   `toml:"enabled"`              // system-level toggle
-	ReviewerModel      string `toml:"reviewer_model"`        // model ref for reviewer
-	SecondReviewerModel string `toml:"second_reviewer_model"` // optional second reviewer
-	MaxRetries         int    `toml:"max_retries"`           // max developer-reviewer loops per task
+	Enabled             bool   `toml:"enabled"`
+	ReviewerModel       string `toml:"reviewer_model"`
+	SecondReviewerModel string `toml:"second_reviewer_model"`
+	MaxRetries          int    `toml:"max_retries"`
+	AutoCommit          bool   `toml:"auto_commit"` // git add -A + commit after each developer task
 }
 
 // ProviderEntry declares a model provider instance. ContextWindow is the model's

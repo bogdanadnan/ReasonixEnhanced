@@ -89,6 +89,7 @@ type OrchestratorSettingsView struct {
 	ReviewerModel      string `json:"reviewerModel"`
 	SecondReviewerModel string `json:"secondReviewerModel"`
 	MaxRetries         int    `json:"maxRetries"`
+	AutoCommit          bool   `json:"autoCommit"`
 }
 
 const defaultCompactTarget = 0.5
@@ -365,7 +366,7 @@ func (a *App) Settings() SettingsView {
 			},
 			Sandbox:            SandboxView{Bash: "enforce", AllowWrite: []string{}, Shell: "auto"},
 			Agent:              AgentView{PlannerMaxSteps: 12, ColdResumePrune: true, ReasoningLanguage: "auto", CompactTarget: 0.5, CompactRatio: 0.8},
-			Orchestrator:       OrchestratorSettingsView{Enabled: false, ReviewerModel: "", SecondReviewerModel: "", MaxRetries: 3},
+			Orchestrator:       OrchestratorSettingsView{Enabled: false, ReviewerModel: "", SecondReviewerModel: "", MaxRetries: 3, AutoCommit: false},
 			Bot:                botSettingsView(config.BotConfig{}),
 			AutoPlan:           "off",
 			DesktopLayoutStyle: "classic",
@@ -436,6 +437,7 @@ func (a *App) Settings() SettingsView {
 			ReviewerModel:       cfg.Orchestrator.ReviewerModel,
 			SecondReviewerModel: cfg.Orchestrator.SecondReviewerModel,
 			MaxRetries:          maxOrchRetries(cfg.Orchestrator.MaxRetries),
+			AutoCommit:          cfg.Orchestrator.AutoCommit,
 		},
 		Bot:                botSettingsView(cfg.Bot),
 		DesktopLanguage:    cfg.DesktopLanguage(),
@@ -1612,6 +1614,13 @@ func (a *App) SetOrchestratorSecondReviewerModel(model string) error {
 func (a *App) SetOrchestratorMaxRetries(n int) error {
 	return a.applyConfigChange(func(c *config.Config) error {
 		c.Orchestrator.MaxRetries = n
+		return nil
+	})
+}
+
+func (a *App) SetOrchestratorAutoCommit(on bool) error {
+	return a.applyConfigChange(func(c *config.Config) error {
+		c.Orchestrator.AutoCommit = on
 		return nil
 	})
 }

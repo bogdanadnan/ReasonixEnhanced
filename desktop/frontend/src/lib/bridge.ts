@@ -273,6 +273,7 @@ export interface AppBindings {
   SetOrchestratorReviewerModel(model: string): Promise<void>;
   SetOrchestratorSecondReviewerModel(model: string): Promise<void>;
   SetOrchestratorMaxRetries(n: number): Promise<void>;
+  SetOrchestratorAutoCommit(on: boolean): Promise<void>;
   OrchState(): Promise<OrchState | null>;
   OrchPlanContent(): Promise<string>;
   OrchReviewContent(n: number): Promise<string>;
@@ -785,7 +786,7 @@ function makeMockApp(): AppBindings {
       proxy: { type: "socks5", server: "127.0.0.1", port: 7890, username: "", password: "" },
     },
     agent: { temperature: 0.2, maxSteps: 0, plannerMaxSteps: 12, systemPrompt: "You are Reasonix, a coding agent.", coldResumePrune: true, reasoningLanguage: "auto", compactTarget: 0.5, compactRatio: 0.8 },
-    orchestrator: { enabled: false, reviewerModel: "", secondReviewerModel: "", maxRetries: 3 },
+    orchestrator: { enabled: false, reviewerModel: "", secondReviewerModel: "", maxRetries: 3, autoCommit: false },
     bot: {
       enabled: !freshMock,
       model: "",
@@ -2599,6 +2600,9 @@ function makeMockApp(): AppBindings {
     },
     async SetOrchestratorMaxRetries(n: number) {
       settings.orchestrator = { ...settings.orchestrator, maxRetries: n };
+    },
+    async SetOrchestratorAutoCommit(on: boolean) {
+      settings.orchestrator = { ...settings.orchestrator, autoCommit: on };
     },
     async OrchState(): Promise<OrchState | null> { return null; },
     async OrchPlanContent(): Promise<string> { return ""; },

@@ -401,6 +401,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 			fmt.Fprintf(&b, "second_reviewer_model = %q   # optional cross-check reviewer\n", c.Orchestrator.SecondReviewerModel)
 		}
 		fmt.Fprintf(&b, "max_retries = %d   # max developer-reviewer loops per task\n", orchMaxRetries(c.Orchestrator.MaxRetries))
+		fmt.Fprintf(&b, "auto_commit = %v   # git add -A + commit after each developer task\n", c.Orchestrator.AutoCommit)
 		b.WriteString("\n")
 	}
 

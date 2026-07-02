@@ -839,6 +839,8 @@ export const en = {
   "settings.orchestratorSecondReviewerModelNone": "None (single reviewer)",
   "settings.orchestratorMaxRetries": "Max review retries",
   "settings.orchestratorMaxRetriesHint": "Maximum times the developer can retry a task after reviewer failure.",
+  "settings.orchestratorAutoCommit": "Auto-commit changes",
+  "settings.orchestratorAutoCommitHint": "When enabled, the developer will git commit after each task so the reviewer has a clean diff to inspect.",
   "settings.reasoningLanguage": "Thinking language",
   "settings.reasoningLanguageHint": "Affects visible reasoning only. Auto follows the conversation language without injecting a language instruction.",
   "settings.reasoningLanguage.auto": "Auto",

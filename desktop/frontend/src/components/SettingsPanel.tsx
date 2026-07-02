@@ -3050,6 +3050,20 @@ function ModelsSection({ s, busy, apply, backgroundApply }: ModelsSectionProps) 
                     onChange={(next) => void apply(() => app.SetOrchestratorMaxRetries(next))}
                   />
                 </SettingsField>
+                <SettingsField label={t("settings.orchestratorAutoCommit")} hint={t("settings.orchestratorAutoCommitHint")}>
+                  <div className="set-seg">
+                    {([true, false] as const).map((on) => (
+                      <button
+                        key={on ? "on" : "off"}
+                        className={`set-seg__btn${s.orchestrator.autoCommit === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(() => app.SetOrchestratorAutoCommit(on))}
+                      >
+                        {on ? t("settings.coldResumePrune.on") : t("settings.coldResumePrune.off")}
+                      </button>
+                    ))}
+                  </div>
+                </SettingsField>
               </>
             )}
           </SettingsSection>
