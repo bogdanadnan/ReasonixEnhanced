@@ -139,10 +139,6 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 		o.mu.Lock()
 		o.state = state
 		o.mu.Unlock()
-		// Continue the task loop — user input becomes a steer message
-		if userInput != "" {
-			o.developer.Session().Add(provider.Message{Role: provider.RoleUser, Content: "[User steer] " + userInput})
-		}
 		for !o.isDone() {
 			if err := o.runTaskCycle(ctx); err != nil {
 				return fmt.Errorf("orchestrator: task cycle: %w", err)
