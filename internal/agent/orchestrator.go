@@ -118,6 +118,10 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 		if state.Reviewer2Label == "" && o.reviewer2 != nil {
 			state.Reviewer2Label = o.reviewer2Label()
 		}
+		// Refresh phases from plan.md in case the parser was updated (empty phases)
+		if freshPhases, err := parsePlan(o.planPath()); err == nil && len(freshPhases) > 0 {
+			state.Phases = freshPhases
+		}
 		o.mu.Lock()
 		o.state = state
 		o.mu.Unlock()
@@ -339,18 +343,18 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 		return fmt.Errorf("phase index %d out of range", state.Phase)
 	}
 	phase := state.Phases[state.Phase-1]
-	if state.Task < 1 || state.Task > len(phase.Tasks) {
-		// Empty phase (e.g. free-text section) — skip to next phase
-		if len(phase.Tasks) == 0 {
-			slog.Info("orchestrator: skipping empty phase", "phase", phase.Name)
-			o.mu.Lock()
-			o.state.Phase++
-			o.state.Task = 1
-			o.mu.Unlock()
-			o.saveStateLocked()
-			return nil
+	if state.Task < 1 || state.Task > len(phase.Tasks) || len(phase.Tasks) == 0 {
+		// Empty phase (free-text section) or past-end — skip to next
+		slog.Info("orchestrator: skipping empty/ended phase", "phase", state.Phase, "name", phase.Name, "tasks", len(phase.Tasks))
+		o.mu.Lock()
+		o.state.Phase++
+		o.state.Task = 1
+		if o.state.Phase > len(o.state.Phases) {
+			o.state.Status = "done"
 		}
-		return fmt.Errorf("task index %d out of range in phase %q", state.Task, phase.Name)
+		o.mu.Unlock()
+		o.saveStateLocked()
+		return nil
 	}
 	taskName := phase.Tasks[state.Task-1]
 	if o.isTaskDone(phase, taskName) {
