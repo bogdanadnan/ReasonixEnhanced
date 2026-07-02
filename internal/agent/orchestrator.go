@@ -475,18 +475,17 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 
 	reviewNudge := ""
 	if state.Retries > 0 {
+		paths := o.reviewPath(state.Task)
+		if o.reviewer2 != nil {
+			paths += " and " + o.reviewPath2(state.Task)
+		}
 		reviewNudge = fmt.Sprintf(`
 
 IMPORTANT: This is RETRY #%d. The reviewer FAILED your previous submission.
-Read the issues at %s and %s FIX EVERY ISSUE before submitting again.
+BEFORE doing anything else, read_file %s and FIX EVERY ISSUE listed there.
 Do NOT resubmit without addressing the review feedback. Do NOT add metadata
 issues about workload files — focus ONLY on code/implementation fixes.
-`, state.Retries, o.reviewPath(state.Task), func() string {
-			if o.reviewer2 != nil {
-				return "and " + o.reviewPath2(state.Task)
-			}
-			return ""
-		}())
+`, state.Retries, paths)
 	}
 
 	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nOnly implement what the brief asks for — do NOT work ahead on future tasks.\nRead existing code with read_file before editing. Run build/tests with bash after changes.%s%s\n\nEvery item in the brief must be fully covered. Any deviation, omission, or\nshortcut will cause the reviewer to FAIL your submission unless you document\nit with a clear rationale in %s. Your rationale must explain WHY the deviation\nwas necessary and why no better alternative exists.\n\nWhen done, write a completion summary to %s. Then call the report_work tool.\nDo NOT respond with text — use ONLY the tool.",
