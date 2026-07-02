@@ -512,7 +512,7 @@ issues about workload files — focus ONLY on code/implementation fixes.
 	}
 
 	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nOnly implement what the brief asks for — do NOT work ahead on future tasks.\nRead existing code with read_file before editing. Run build/tests with bash after changes.%s%s\n\nEvery item in the brief must be fully covered. Any deviation, omission, or\nshortcut will cause the reviewer to FAIL your submission unless you document\nit with a clear rationale in %s. Your rationale must explain WHY the deviation\nwas necessary and why no better alternative exists.\n\nWhen done, write a completion summary to %s. Then call the report_work tool.\nDo NOT respond with text — use ONLY the tool.",
-		o.briefPath(), reviewNudge, commitInstr, o.donePath(), o.rationalePath())
+		o.briefPath(), reviewNudge, commitInstr, o.rationalePath(), o.donePath())
 
 	devTool := newReportTool("report_work",
 		"Report work completion back to the orchestrator. Call this when you're done.",
