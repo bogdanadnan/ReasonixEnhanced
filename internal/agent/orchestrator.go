@@ -256,6 +256,20 @@ func (o *Orchestrator) reviewPath2(n int) string {
 	return filepath.Join(o.orchDir, fmt.Sprintf("review_%d_b.md", n))
 }
 
+func (o *Orchestrator) reviewPathRetry(n, retry int) string {
+	if retry <= 1 {
+		return filepath.Join(o.orchDir, fmt.Sprintf("review_%d.md", n))
+	}
+	return filepath.Join(o.orchDir, fmt.Sprintf("review_%d_r%d.md", n, retry))
+}
+
+func (o *Orchestrator) reviewPath2Retry(n, retry int) string {
+	if retry <= 1 {
+		return filepath.Join(o.orchDir, fmt.Sprintf("review_%d_b.md", n))
+	}
+	return filepath.Join(o.orchDir, fmt.Sprintf("review_%d_r%d_b.md", n, retry))
+}
+
 func (o *Orchestrator) journalPath() string {
 	return filepath.Join(o.orchDir, "orchestrator.log")
 }
@@ -325,6 +339,10 @@ func (o *Orchestrator) cleanOrchDir() {
 	for i := 1; i < 100; i++ {
 		os.Remove(o.reviewPath(i))
 		os.Remove(o.reviewPath2(i))
+		for r := 2; r < 20; r++ {
+			os.Remove(o.reviewPathRetry(i, r))
+			os.Remove(o.reviewPath2Retry(i, r))
+		}
 	}
 }
 
@@ -475,9 +493,9 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 
 	reviewNudge := ""
 	if state.Retries > 0 {
-		paths := o.reviewPath(state.Task)
+		paths := o.reviewPathRetry(state.Task, state.Retries)
 		if o.reviewer2 != nil {
-			paths += " and " + o.reviewPath2(state.Task)
+			paths += " and " + o.reviewPath2Retry(state.Task, state.Retries)
 		}
 		reviewNudge = fmt.Sprintf(`
 
@@ -529,7 +547,7 @@ issues about workload files — focus ONLY on code/implementation fixes.
 	o.mu.Unlock()
 	o.saveStateLocked()
 
-	reviewPath := o.reviewPath(state.Task)
+	reviewPath := o.reviewPathRetry(state.Task, state.Retries+1)
 	reviewDiffInstr := "if this is a git repo, use `git diff` to see what changed"
 	if o.autoCommit {
 		reviewDiffInstr = "if this is a git repo, use `git log -1 -p` to see committed changes"
@@ -609,7 +627,7 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 		o.mu.Unlock()
 		o.saveStateLocked()
 
-		review2Path := o.reviewPath2(state.Task)
+		review2Path := o.reviewPath2Retry(state.Task, state.Retries+1)
 		review2Prompt := fmt.Sprintf(`You are the Second Reviewer. Same strict rules as the first reviewer:
 FAIL if any brief item is not covered, FAIL for any issue. The developer's
 rationale is at %s — accept only if it explains the necessity AND you
