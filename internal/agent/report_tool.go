@@ -46,7 +46,7 @@ func (t *reportTool) Execute(_ context.Context, args json.RawMessage) (string, e
 		}
 		t.result <- args
 	}
-	return "Report received by orchestrator.", nil
+	return "Report received by orchestrator. Your work is complete — respond ONLY with 'done' now.", nil
 }
 
 func (t *reportTool) Wait() (json.RawMessage, error) {
