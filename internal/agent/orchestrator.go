@@ -471,7 +471,7 @@ issues about workload files — focus ONLY on code/implementation fixes.
 		}())
 	}
 
-	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nOnly implement what the brief asks for — do NOT work ahead on future tasks.\nRead existing code with read_file before editing. Run build/tests with bash after changes.%s%s\n\nWhen done, write a completion summary to %s and a rationale file at %s explaining any skipped items, deliberate deviations, or design choices the reviewer should know about. Then call the report_work tool. Do NOT respond with text — use ONLY the tool.",
+	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nOnly implement what the brief asks for — do NOT work ahead on future tasks.\nRead existing code with read_file before editing. Run build/tests with bash after changes.%s%s\n\nEvery item in the brief must be fully covered. Any deviation, omission, or\nshortcut will cause the reviewer to FAIL your submission unless you document\nit with a clear rationale in %s. Your rationale must explain WHY the deviation\nwas necessary and why no better alternative exists.\n\nWhen done, write a completion summary to %s. Then call the report_work tool.\nDo NOT respond with text — use ONLY the tool.",
 		o.briefPath(), reviewNudge, commitInstr, o.donePath(), o.rationalePath())
 
 	devTool := newReportTool("report_work",
@@ -515,29 +515,31 @@ issues about workload files — focus ONLY on code/implementation fixes.
 	if o.autoCommit {
 		reviewDiffInstr = "if this is a git repo, use `git log -1 -p` to see committed changes"
 	}
-	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Review ONLY the deliverables the developer produced
-against the workload brief (%s). The developer may have produced code,
-documentation, configuration, or other artifacts — judge what was delivered,
-not the format.
+	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Your verdict is strict: FAIL if ANY item in the
+workload brief is not fully implemented. FAIL for ANY issue — correctness,
+performance, code quality, edge cases, error handling, missing tests.
 
-%s. Also inspect the changed files directly with read_file.
+The developer may have written a rationale at %s explaining why something
+was skipped or done differently. Read it. You may accept a deviation ONLY if:
+1. The rationale clearly explains WHY it was necessary, AND
+2. You cannot find a working alternative after inspecting the code.
+
+If you find an alternative the developer missed, FAIL with [RATIONALE]
+and describe your alternative as pseudocode or concrete steps.
 
 Read the workload brief at %s — this is THE deliverable spec.
+%s. Also inspect changed files with read_file.
 
-IMPORTANT: You are a READ-ONLY reviewer. Do NOT commit, push, or write code.
-Use pseudocode or step-by-step instructions to illustrate alternatives.
+IMPORTANT: You are READ-ONLY. Do NOT write code. Use pseudocode.
 
-Write your review to %s with this format:
+Write your review to %s:
 ## Verdict: PASS or FAIL
 ## Summary
-Brief summary of your assessment.
 ## Issues (if FAIL)
-1. Issue description
-2. Issue description
+1. Issue (prefix [RATIONALE] if you're challenging a rationale claim)
 
-After writing the review file, call the report_review tool. Do NOT respond
-with text — use ONLY the tool.`,
-		o.briefPath(), reviewDiffInstr, o.briefPath(), reviewPath)
+After writing, call the report_review tool. Do NOT respond with text.`,
+		o.rationalePath(), o.briefPath(), reviewDiffInstr, reviewPath)
 
 	var verdict reviewerReport
 	reviewTool := newReportTool("report_review",
@@ -583,37 +585,25 @@ with text — use ONLY the tool.`,
 		o.saveStateLocked()
 
 		review2Path := o.reviewPath2(state.Task)
-		review2Prompt := fmt.Sprintf(`You are the Second Reviewer. Review ONLY the deliverables the developer
-produced against the workload brief. The first reviewer's review is at %s
-(verdict: %s).
+		review2Prompt := fmt.Sprintf(`You are the Second Reviewer. Same strict rules as the first reviewer:
+FAIL if any brief item is not covered, FAIL for any issue. The developer's
+rationale is at %s — accept only if it explains the necessity AND you
+cannot find a working alternative.
 
-Read:
-  1. The workload brief at %s — this is THE deliverable spec
-  2. The first reviewer's review at %s — examine for gaps but don't re-litigate
-  3. The actual changes — use read_file and (if git) git diff
+First reviewer's verdict at %s was: %s. Examine for gaps.
 
-Do NOT read workload_done.md or workload_rationale.md — they are metadata,
-not deliverables.
+Read the workload brief at %s — this is THE deliverable spec.
+Read the actual changes with read_file and (if git) git diff.
 
-If you find issues the first reviewer missed, or disagree with their
-assessment, document why. Do NOT repeat issues unless you have
-additional context.
+IMPORTANT: You are READ-ONLY. Use pseudocode for alternatives.
 
-IMPORTANT: You are READ-ONLY. Never edit or write files.
-
-Write your review to %s with this format:
+Write your review to %s:
 ## Verdict: PASS or FAIL
-## Summary
-Brief summary. If you disagree with the first reviewer, explain why.
-## Issues (if FAIL)
-1. Issue (prefix [MISSED] if first reviewer didn't flag)
-2. Issue
+## Summary (note if you disagree with first reviewer)
+## Issues (if FAIL, prefix [MISSED] if first reviewer didn't flag)
 
-DO NOT mention workload_done.md, workload_rationale.md, or any metadata.
-
-After writing the review file, call the report_review tool. Do NOT respond
-with text — use ONLY the tool.`,
-			reviewPath, verdict.Status, o.briefPath(), reviewPath, review2Path,
+After writing, call the report_review tool. Do NOT respond with text.`,
+			o.rationalePath(), reviewPath, verdict.Status, o.briefPath(), review2Path,
 		)
 
 		// Register the report tool BEFORE the run so reviewer2 can call it
