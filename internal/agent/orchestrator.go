@@ -498,19 +498,15 @@ with text — use ONLY the tool.`,
 			reviewPath, verdict.Status, o.briefPath(), reviewPath, review2Path,
 		)
 
-		if err := o.reviewer2.Run(ctx, review2Prompt); err != nil {
-			return fmt.Errorf("second reviewer: %w", err)
-		}
-
-		// Register the report tool for reviewer2
+		// Register the report tool BEFORE the run so reviewer2 can call it
 		rev2Tool := newReportTool("report_review",
 			"Report your review verdict to the orchestrator.",
 			json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`))
 		o.reviewer2.tools.Add(rev2Tool)
 		defer o.reviewer2.tools.Remove("report_review")
-		o.reviewer2.Session().Add(provider.Message{Role: provider.RoleUser, Content: "Now call the report_review tool with your verdict."})
-		if err := o.reviewer2.Run(ctx, "Call the report_review tool."); err != nil {
-			return fmt.Errorf("second reviewer report: %w", err)
+
+		if err := o.reviewer2.Run(ctx, review2Prompt); err != nil {
+			return fmt.Errorf("second reviewer: %w", err)
 		}
 
 		raw2, waitErr2 := rev2Tool.Wait()
