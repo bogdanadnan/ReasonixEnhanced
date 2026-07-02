@@ -276,8 +276,23 @@ func (o *Orchestrator) runPlanning(ctx context.Context, userInput string) error 
 	prompt := fmt.Sprintf(`You are the Planner in a developer orchestrator. Given the user's request,
 create a detailed implementation plan. First explore the codebase with
 read_file, glob, and grep to understand the existing structure, then write
-the plan to %s using ## for phases and - [ ] for individual tasks.
-Each task should be concrete and implementable in one developer session.
+the plan to %s.
+
+CRITICAL FORMAT RULES — the orchestrator parses this file automatically:
+- Phases start with "## Phase N: Name" (exactly two hash marks, space, "Phase", number, colon, name)
+- Tasks start with "- [ ]" at the beginning of the line (dash, space, bracket, space, bracket, space)
+- Completed tasks use "- [x]" (same format with x)
+- Do NOT use ### headings for tasks. Do NOT nest tasks under sub-headings.
+- Each task should be concrete and implementable in one developer session.
+
+Example of CORRECT format:
+## Phase 1: Project Setup
+- [ ] Create the main Go module
+- [ ] Add the orchestrator config type
+
+## Phase 2: Core Logic
+- [ ] Implement the Run loop
+- [ ] Add JSON validation
 
 When you're done, call the report_plan tool with your results. Do NOT respond
 with text — use ONLY the tool.`, o.planPath(), userInput)
