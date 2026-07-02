@@ -882,7 +882,7 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 				reviewerTools := agent.ReviewerToolRegistry(reg)
 				reviewerSess := agent.NewSession(agent.ReviewerSystemPrompt())
 				reviewerAgent := agent.New(reviewerProv, reviewerTools, reviewerSess, agent.Options{
-					MaxSteps:          25,
+					MaxSteps:          0, // no limit — reviewer may need many reads + git diff
 					Gate:              headlessGate,
 					ContextWindow:     re.ContextWindow,
 					SoftCompactRatio:  cfg.Agent.SoftCompactRatio,
