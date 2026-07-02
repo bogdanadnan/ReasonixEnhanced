@@ -693,6 +693,9 @@ func (o *Orchestrator) advanceTask(ctx context.Context) error {
 	phase.Done = append(phase.Done, taskName)
 	o.state.Task++
 	o.state.Retries = 0
+	o.state.DevDone = false
+	o.state.ReviewDone = false
+	o.state.Review2Done = false
 
 	if o.state.Task > len(phase.Tasks) {
 		o.state.Phase++
