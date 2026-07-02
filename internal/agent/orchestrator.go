@@ -162,6 +162,51 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 		}
 	}
 
+	// Final review: planner audits all deliverables. If issues found, restart.
+	if o.state != nil && o.state.Status == "done" {
+		o.state.Status = "final_review"
+		o.saveStateLocked()
+
+		finalPrompt := fmt.Sprintf(`You are the Planner. All development tasks are complete. Perform a final review.
+Read the plan at %s and ALL review files in %s. Use bash to build and test.
+
+If you find NO issues, respond with: {"status": "pass", "summary": "..."}
+If you find issues that need fixing, create a new section at the end of the plan file:
+## Phase N: Final Fixes
+- [ ] Fix issue 1
+- [ ] Fix issue 2
+Then respond with: {"status": "fail", "issues": N, "summary": "..."}
+
+Call the report_plan tool with your results.`,
+			o.planPath(), o.orchDir)
+
+		planTool := newReportTool("report_plan",
+			"Report final review results.",
+			json.RawMessage(`{"type":"object","properties":{"phase_count":{"type":"integer"},"task_count":{"type":"integer"}},"required":["phase_count","task_count"]}`))
+		o.planner.tools.Add(planTool)
+		defer o.planner.tools.Remove("report_plan")
+
+		if err := o.planner.Run(ctx, finalPrompt); err != nil {
+			slog.Warn("orchestrator: final review failed", "err", err)
+			return nil // don't fail the turn for this
+		}
+		raw, _ := planTool.Wait()
+		var finalVerdict struct {
+			Status  string `json:"status"`
+			Issues  int    `json:"issues"`
+			Summary string `json:"summary"`
+		}
+		if raw != nil {
+			json.Unmarshal(raw, &finalVerdict)
+		}
+		if finalVerdict.Status == "fail" {
+			slog.Info("orchestrator: final review found issues, restarting", "issues", finalVerdict.Issues)
+			o.cleanOrchDir()
+			// Re-run planning with the fix tasks appended to the original plan
+			return o.Run(ctx, "Fix the issues found in the final review: "+finalVerdict.Summary)
+		}
+	}
+
 	slog.Info("orchestrator: done")
 	return nil
 }
@@ -384,7 +429,7 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 	}
 
 	// --- DEVELOPING ---
-	slog.Info("orchestrator: developing", "phase", state.Phase, "task", state.Task, "name", taskName)
+	slog.Info("orchestrator: developing", "phase", state.Phase, "task", state.Task, "name", taskName, "retries", state.Retries)
 	state.Status = "developing"
 	o.mu.Lock()
 	o.state = &state
@@ -602,21 +647,22 @@ func (o *Orchestrator) advanceTask(ctx context.Context) error {
 	}
 	phase := &o.state.Phases[o.state.Phase-1]
 	taskName := phase.Tasks[o.state.Task-1]
+	slog.Info("orchestrator: advanceTask", "phase", o.state.Phase, "task", o.state.Task, "name", taskName, "done", len(phase.Done))
 	phase.Done = append(phase.Done, taskName)
 	o.state.Task++
 	o.state.Retries = 0
 
 	if o.state.Task > len(phase.Tasks) {
-		// Phase complete — move to next phase
 		o.state.Phase++
 		if o.state.Phase > len(o.state.Phases) {
 			o.state.Status = "done"
 			slog.Info("orchestrator: all phases complete")
 		} else {
 			o.state.Task = 1
-			slog.Info("orchestrator: phase complete", "phase", o.state.Phase-1)
+			slog.Info("orchestrator: phase complete", "next_phase", o.state.Phase)
 		}
 	}
+	slog.Info("orchestrator: advanceTask done", "next_phase", o.state.Phase, "next_task", o.state.Task, "status", o.state.Status)
 	return o.saveState()
 }
 
