@@ -136,8 +136,13 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 		if state.Reviewer2Label == "" && o.reviewer2 != nil {
 			state.Reviewer2Label = o.reviewer2Label()
 		}
-		// Refresh phases from plan.md in case the parser was updated (empty phases)
+		// Refresh phases from plan.md but KEEP Done entries from state.json
 		if freshPhases, err := parsePlan(o.planPath()); err == nil && len(freshPhases) > 0 {
+			for i := range freshPhases {
+				if i < len(state.Phases) {
+					freshPhases[i].Done = state.Phases[i].Done
+				}
+			}
 			state.Phases = freshPhases
 		}
 		o.mu.Lock()
