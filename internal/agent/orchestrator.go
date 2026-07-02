@@ -167,9 +167,8 @@ func (o *Orchestrator) reviewPath2(n int) string {
 }
 
 // saveState persists the current state to state.json.
+// Caller must hold o.mu if the state may be modified concurrently.
 func (o *Orchestrator) saveState() error {
-	o.mu.Lock()
-	defer o.mu.Unlock()
 	if o.state == nil {
 		return nil
 	}
@@ -178,6 +177,14 @@ func (o *Orchestrator) saveState() error {
 		return err
 	}
 	return os.WriteFile(o.statePath(), b, 0o644)
+}
+
+// saveStateLocked is saveState with lock acquisition for callers that
+// don't already hold o.mu.
+func (o *Orchestrator) saveStateLocked() error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.saveState()
 }
 
 // State returns a copy of the current orchestrator state (thread-safe).
@@ -243,7 +250,10 @@ User request:
 	o.mu.Lock()
 	o.state = &OrchState{Phase: 1, Task: 1, Phases: phases, Status: "developing"}
 	o.mu.Unlock()
-	return o.saveState()
+	o.mu.Lock()
+	err = o.saveState()
+	o.mu.Unlock()
+	return err
 }
 
 func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
@@ -268,7 +278,7 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 			o.state.Phase++
 			o.state.Task = 1
 			o.mu.Unlock()
-			o.saveState()
+			o.saveStateLocked()
 			return nil
 		}
 		return fmt.Errorf("task index %d out of range in phase %q", state.Task, phase.Name)
@@ -284,7 +294,7 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 	o.mu.Lock()
 	o.state = &state
 	o.mu.Unlock()
-	o.saveState()
+	o.saveStateLocked()
 
 	brief := fmt.Sprintf("Implement this task from the plan:\n\n**%s**\n\nPhase: %s\nTask %d of %d",
 		taskName, phase.Name, state.Task, len(phase.Tasks))
@@ -303,7 +313,7 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 	o.mu.Lock()
 	o.state = &state
 	o.mu.Unlock()
-	o.saveState()
+	o.saveStateLocked()
 
 	reviewPath := o.reviewPath(state.Task)
 	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Review the work the developer just completed.
@@ -431,7 +441,7 @@ After writing the review file, respond with ONLY valid JSON:
 		o.mu.Lock()
 		o.state = &state
 		o.mu.Unlock()
-		o.saveState()
+		o.saveStateLocked()
 		return nil // loop back to developing (caller re-enters runTaskCycle)
 	}
 
