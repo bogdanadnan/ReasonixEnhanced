@@ -405,8 +405,25 @@ func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
 	if o.autoCommit {
 		commitInstr = "\n\nBefore you finish: if this is a git repository, commit your changes with `git add -A && git commit -m \"[orchestrator] " + taskName + "\"`. The reviewer needs a clean baseline to diff against."
 	}
-	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nRead existing code with read_file before editing. Run build/tests with bash after changes.\n\nIf there is a review history, address any issues from the latest review_N.md.\nIf you cannot or choose not to implement any aspect, document it with rationale in %s.%s\n\nWhen done, write a completion summary to %s and a rationale file at %s explaining any skipped items, deliberate deviations, or design choices the reviewer should know about. Then call the report_work tool. Do NOT respond with text — use ONLY the tool.",
-		o.briefPath(), o.rationalePath(), commitInstr, o.donePath(), o.rationalePath())
+
+	reviewNudge := ""
+	if state.Retries > 0 {
+		reviewNudge = fmt.Sprintf(`
+
+IMPORTANT: This is RETRY #%d. The reviewer FAILED your previous submission.
+Read the issues at %s and %s FIX EVERY ISSUE before submitting again.
+Do NOT resubmit without addressing the review feedback. Do NOT add metadata
+issues about workload files — focus ONLY on code/implementation fixes.
+`, state.Retries, o.reviewPath(state.Task), func() string {
+			if o.reviewer2 != nil {
+				return "and " + o.reviewPath2(state.Task)
+			}
+			return ""
+		}())
+	}
+
+	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nRead existing code with read_file before editing. Run build/tests with bash after changes.%s%s\n\nWhen done, write a completion summary to %s and a rationale file at %s explaining any skipped items, deliberate deviations, or design choices the reviewer should know about. Then call the report_work tool. Do NOT respond with text — use ONLY the tool.",
+		o.briefPath(), reviewNudge, commitInstr, o.donePath(), o.rationalePath())
 
 	devTool := newReportTool("report_work",
 		"Report work completion back to the orchestrator. Call this when you're done.",
