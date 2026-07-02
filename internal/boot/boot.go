@@ -897,10 +897,35 @@ func Build(ctx context.Context, opts Options) (*control.Controller, error) {
 				if maxRetries <= 0 {
 					maxRetries = 3
 				}
+			var reviewer2Agent *agent.Agent
+			if cfg.Orchestrator.SecondReviewerModel != "" {
+				re2, ok := cfg.ResolveModel(cfg.Orchestrator.SecondReviewerModel)
+				if !ok {
+					return nil, fmt.Errorf("orchestrator.second_reviewer_model %q is not a configured provider", cfg.Orchestrator.SecondReviewerModel)
+				}
+				rev2Prov, err := NewProviderWithProxy(re2, proxySpec)
+				if err != nil {
+					return nil, fmt.Errorf("orchestrator second reviewer %q: %w", cfg.Orchestrator.SecondReviewerModel, err)
+				}
+				rev2Tools := agent.ReviewerToolRegistry(reg)
+				rev2Sess := agent.NewSession(agent.ReviewerSystemPrompt())
+				reviewer2Agent = agent.New(rev2Prov, rev2Tools, rev2Sess, agent.Options{
+					MaxSteps:          0,
+					Gate:              headlessGate,
+					ContextWindow:     re2.ContextWindow,
+					SoftCompactRatio:  cfg.Agent.SoftCompactRatio,
+					CompactRatio:      cfg.Agent.CompactRatio,
+					CompactForceRatio: cfg.Agent.CompactForceRatio,
+					CompactTarget:     cfg.Agent.CompactTarget,
+					ArchiveDir:        config.ArchiveDir(),
+					ReasoningLanguage: cfg.ReasoningLanguage(),
+				}, sink)
+			}
 			orch = agent.NewOrchestrator(agent.OrchestratorOptions{
 					Planner:    plannerAgent,
 					Developer:  executor,
 					Reviewer:   reviewerAgent,
+					Reviewer2:  reviewer2Agent,
 					OrchDir:    filepath.Join(root, ".reasonix", "orchestrator"),
 					MaxRetries: maxRetries,
 				})
