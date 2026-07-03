@@ -515,7 +515,7 @@ issues about workload files — focus ONLY on code/implementation fixes.
 `, state.Retries, paths)
 	}
 
-	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nOnly implement what the brief asks for — do NOT work ahead on future tasks.\nRead existing code with read_file before editing. Run build/tests with bash after changes.%s%s\n\nEvery item in the brief must be fully covered. Any deviation, omission, or\nshortcut will cause the reviewer to FAIL your submission unless you document it in the rationale parameter of the report_work tool.\n\nWhen done, call the report_work tool with:\n- status: \"done\"\n- summary: brief summary of what you implemented\n- rationale: explanation of any deviations, skipped items, or key decisions\n\nAfter calling report_work, stop immediately — your turn is complete.\nDo NOT call any other tools after report_work.",
+	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nOnly implement what the brief asks for — do NOT work ahead on future tasks.\nIf you encounter bugs in unrelated code that block your work, fix them.\nRead existing code with read_file before editing. Run build/tests with bash after changes.%s%s\n\nEvery item in the brief must be fully covered. Any deviation, omission, or\nshortcut will cause the reviewer to FAIL your submission unless you document it in the rationale parameter of the report_work tool.\n\nWhen done, call the report_work tool with:\n- status: \"done\"\n- summary: brief summary of what you implemented\n- rationale: explanation of any deviations, skipped items, or key decisions\n\nAfter calling report_work, stop immediately — your turn is complete.\nDo NOT call any other tools after report_work.",
 		o.briefPath(), reviewNudge, commitInstr)
 
 	devCtx, devCancel := context.WithCancel(ctx)
@@ -584,6 +584,10 @@ performance, code quality, edge cases, error handling, missing tests.
 Also flag potential FUTURE issues: architectural concerns, tech debt,
 code that will cause problems later even if it works now. These are
 valid reasons to FAIL — explain why the issue will cause future harm.
+
+If you discover bugs in code unrelated to the task brief, FAIL with
+[BLOCKER] — the developer must fix them before proceeding. Any bug
+that could create problems is a valid FAIL reason.
 
 The developer may have written a rationale at %s explaining why something
 was skipped or done differently. Read it. You may accept a deviation ONLY if:
