@@ -192,7 +192,7 @@ Call the report_plan tool with your results.`,
 
 		planTool := newReportTool("report_plan",
 			"Report final review results.",
-			json.RawMessage(`{"type":"object","properties":{"phase_count":{"type":"integer"},"task_count":{"type":"integer"}},"required":["phase_count","task_count"]}`))
+			json.RawMessage(`{"type":"object","properties":{"phase_count":{"type":"integer"},"task_count":{"type":"integer"}},"required":["phase_count","task_count"]}`), nil)
 		o.planner.tools.Add(planTool)
 		defer o.planner.tools.Remove("report_plan")
 
@@ -389,7 +389,7 @@ with text — use ONLY the tool.`, o.planPath(), userInput)
 
 	planTool := newReportTool("report_plan",
 		"Report planning results back to the orchestrator. Call this when your plan is complete.",
-		json.RawMessage(`{"type":"object","properties":{"phase_count":{"type":"integer"},"task_count":{"type":"integer"}},"required":["phase_count","task_count"]}`))
+		json.RawMessage(`{"type":"object","properties":{"phase_count":{"type":"integer"},"task_count":{"type":"integer"}},"required":["phase_count","task_count"]}`), nil)
 	o.journal("PLAN_PROMPT len=%d: %s", len(prompt), strings.ReplaceAll(prompt, "\n", "⏎"))
 	o.planner.tools.Add(planTool)
 	defer o.planner.tools.Remove("report_plan")
@@ -517,14 +517,15 @@ issues about workload files — focus ONLY on code/implementation fixes.
 	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nOnly implement what the brief asks for — do NOT work ahead on future tasks.\nRead existing code with read_file before editing. Run build/tests with bash after changes.%s%s\n\nEvery item in the brief must be fully covered. Any deviation, omission, or\nshortcut will cause the reviewer to FAIL your submission unless you document it in the rationale parameter of the report_work tool.\n\nWhen done, call the report_work tool with:\n- status: \"done\"\n- summary: brief summary of what you implemented\n- rationale: explanation of any deviations, skipped items, or key decisions\n\nAfter calling report_work, stop immediately — your turn is complete.\nDo NOT call any other tools after report_work.",
 		o.briefPath(), reviewNudge, commitInstr)
 
+	devCtx, devCancel := context.WithCancel(ctx)
 	devTool := newReportTool("report_work",
 		"Report work completion to the orchestrator. After calling this tool, respond with only 'done' — nothing else.",
-		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string"},"summary":{"type":"string"},"rationale":{"type":"string"}},"required":["status","summary"]}`))
+		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string"},"summary":{"type":"string"},"rationale":{"type":"string"}},"required":["status","summary"]}`), devCancel)
 	o.journal("DEV_PROMPT len=%d retries=%d: %s", len(devPrompt), state.Retries, strings.ReplaceAll(devPrompt, "\n", "⏎"))
 	o.developer.tools.Add(devTool)
 	defer o.developer.tools.Remove("report_work")
 
-	if err := o.developer.Run(ctx, devPrompt); err != nil {
+	if err := o.developer.Run(devCtx, devPrompt); err != nil {
 		return fmt.Errorf("developer: %w", err)
 	}
 
@@ -600,7 +601,7 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 	var verdict reviewerReport
 	reviewTool := newReportTool("report_review",
 		"Report your review verdict to the orchestrator. Call this when your review is complete.",
-		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`))
+		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), nil)
 	o.journal("REVIEW1_PROMPT task=%d len=%d: %s", state.Task, len(reviewPrompt), strings.ReplaceAll(reviewPrompt, "\n", "⏎"))
 	o.reviewer.tools.Add(reviewTool)
 	defer o.reviewer.tools.Remove("report_review")
@@ -667,7 +668,7 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 		// Register the report tool BEFORE the run so reviewer2 can call it
 		rev2Tool := newReportTool("report_review",
 			"Report your review verdict to the orchestrator.",
-			json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`))
+			json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), nil)
 		o.journal("REVIEW2_PROMPT task=%d len=%d: %s", state.Task, len(review2Prompt), strings.ReplaceAll(review2Prompt, "\n", "⏎"))
 		o.reviewer2.tools.Add(rev2Tool)
 		defer o.reviewer2.tools.Remove("report_review")

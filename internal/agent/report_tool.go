@@ -14,16 +14,17 @@ type reportTool struct {
 	name        string
 	description string
 	schema      json.RawMessage
-	result      chan json.RawMessage // buffered channel; the orchestrator reads from it
-	called      bool                 // true after first Execute call
+	result      chan json.RawMessage
+	cancel      context.CancelFunc // cancels the agent's context on first Execute
 }
 
-func newReportTool(name, desc string, schema json.RawMessage) *reportTool {
+func newReportTool(name, desc string, schema json.RawMessage, cancel context.CancelFunc) *reportTool {
 	return &reportTool{
 		name:        name,
 		description: desc,
 		schema:      schema,
 		result:      make(chan json.RawMessage, 1),
+		cancel:      cancel,
 	}
 }
 
@@ -35,10 +36,6 @@ func (t *reportTool) Schema() json.RawMessage {
 }
 
 func (t *reportTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
-	if t.called {
-		return "ERROR: You already called this tool. STOP immediately — do not call any tool again. Respond with only 'done' as text.", nil
-	}
-	t.called = true
 	select {
 	case t.result <- args:
 	default:
@@ -48,18 +45,18 @@ func (t *reportTool) Execute(_ context.Context, args json.RawMessage) (string, e
 		}
 		t.result <- args
 	}
-	return "Report received. Your work is complete. Respond with ONLY the word 'done' as text now.", nil
+	if t.cancel != nil {
+		t.cancel()
+	}
+	return "Report received. Turn ending now.", nil
 }
 
 func (t *reportTool) Wait() (json.RawMessage, error) {
-	if !t.called {
-		return nil, fmt.Errorf("%s: agent did not call the report tool", t.name)
-	}
 	select {
 	case r := <-t.result:
 		return r, nil
 	default:
-		return nil, fmt.Errorf("%s: no result in channel", t.name)
+		return nil, fmt.Errorf("%s: agent did not call the report tool", t.name)
 	}
 }
 
