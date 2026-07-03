@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -526,7 +527,11 @@ issues about workload files — focus ONLY on code/implementation fixes.
 	defer o.developer.tools.Remove("report_work")
 
 	if err := o.developer.Run(devCtx, devPrompt); err != nil {
-		return fmt.Errorf("developer: %w", err)
+		if errors.Is(err, context.Canceled) {
+			// report_work cancelled the context — normal, proceed
+		} else {
+			return fmt.Errorf("developer: %w", err)
+		}
 	}
 
 	raw, devErr := devTool.Wait()
