@@ -527,8 +527,8 @@ issues about workload files — focus ONLY on code/implementation fixes.
 	defer o.developer.tools.Remove("report_work")
 
 	if err := o.developer.Run(devCtx, devPrompt); err != nil {
-		if errors.Is(err, context.Canceled) {
-			// report_work cancelled the context — normal, proceed
+		if errors.Is(err, context.Canceled) && ctx.Err() == nil {
+			// report_work cancelled the dev context — normal, proceed
 		} else {
 			return fmt.Errorf("developer: %w", err)
 		}
