@@ -165,6 +165,43 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 		return fmt.Errorf("orchestrator: planning phase: %w", err)
 	}
 
+	// Plan review: reviewers audit the plan before any code is written.
+	// If they fail, the planner must revise. Loop until pass or max retries.
+	for planRetries := 0; planRetries < o.maxRetries; planRetries++ {
+		if err := o.runPlanReview(ctx); err != nil {
+			return fmt.Errorf("orchestrator: plan review: %w", err)
+		}
+		o.mu.Lock()
+		planPass := o.state.Status == "developing"
+		o.mu.Unlock()
+		if planPass {
+			break
+		}
+		// Plan failed review — nudge planner and re-parse
+		o.journal("PLAN_REVIEW retry=%d — asking planner to revise", planRetries+1)
+		revisePrompt := fmt.Sprintf("The reviewers rejected your plan. Read the review at %s and %s. Revise the plan at %s to address ALL issues. Then call report_plan again.",
+			o.reviewPath(0), func() string {
+				if o.reviewer2 != nil {
+					return "and " + o.reviewPath2(0)
+				}
+				return ""
+			}(), o.planPath())
+		o.planner.Session().Add(provider.Message{Role: provider.RoleUser, Content: revisePrompt})
+		if err := o.planner.Run(ctx, "Revise the plan to address reviewer feedback."); err != nil {
+			return fmt.Errorf("orchestrator: plan revision: %w", err)
+		}
+		// Re-parse the revised plan
+		phases, err := parsePlan(o.planPath())
+		if err != nil {
+			o.journal("PLAN_REVISION parse error: %v", err)
+			continue
+		}
+		o.mu.Lock()
+		o.state.Phases = phases
+		o.mu.Unlock()
+		o.saveStateLocked()
+	}
+
 	// Development loop
 	for !o.isDone() {
 		if err := o.runTaskCycle(ctx); err != nil {
@@ -445,6 +482,89 @@ with text — use ONLY the tool.`, o.planPath(), userInput)
 	err = o.saveState()
 	o.mu.Unlock()
 	return err
+}
+
+// runPlanReview sends the plan to reviewers before development starts.
+// On pass, sets state.Status = "reviewing_fail_plan" or "developing".
+func (o *Orchestrator) runPlanReview(ctx context.Context) error {
+	o.journal("PLAN_REVIEW starting")
+	// Write a plan-review brief
+	brief := fmt.Sprintf("Review the implementation plan at %s.\n\nCheck: feasibility, completeness, task scoping, dependency order, and any missing considerations.\n\nThis plan is NOT code — judge its structure and correctness as a specification.", o.planPath())
+	os.WriteFile(o.briefPath(), []byte(brief), 0o644)
+
+	// Run reviewer 1
+	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Review the IMPLEMENTATION PLAN (not code).
+Read the plan at %s. Judge: feasibility, completeness, task ordering,
+dependencies, scoping, and whether it covers all user requirements.
+
+FAIL if: tasks are too large or vague, dependencies are circular,
+critical steps are missing, or the plan is unrealistic.
+
+Write your review to %s:
+## Verdict: PASS or FAIL
+## Summary
+## Issues (if FAIL)
+
+After writing, call the report_review tool.`, o.planPath(), o.reviewPath(0))
+
+	revTool := newReportTool("report_review", "Report plan review verdict.",
+		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), nil)
+	if msgs := o.reviewer.Session().Snapshot(); len(msgs) > 1 {
+		o.reviewer.Session().Replace(msgs[:1])
+	}
+	o.reviewer.tools.Add(revTool)
+	defer o.reviewer.tools.Remove("report_review")
+
+	if err := o.reviewer.Run(ctx, reviewPrompt); err != nil {
+		return err
+	}
+	raw, _ := revTool.Wait()
+	var verdict reviewerReport
+	json.Unmarshal(raw, &verdict)
+	o.journal("PLAN_REVIEW 1 verdict=%s issues=%d", verdict.Status, verdict.Issues)
+
+	planPass := verdict.Status == "pass"
+
+	// Reviewer 2
+	if o.reviewer2 != nil {
+		review2Prompt := fmt.Sprintf(`You are the Second Reviewer. Review the IMPLEMENTATION PLAN at %s.
+First reviewer verdict: %s (%s). Same criteria: feasibility, completeness, dependency order.
+Write to %s, then call report_review.`, o.planPath(), verdict.Status, o.reviewPath(0), o.reviewPath2(0))
+
+		rev2Tool := newReportTool("report_review", "Report plan review verdict.",
+			json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), nil)
+		if msgs := o.reviewer2.Session().Snapshot(); len(msgs) > 1 {
+			o.reviewer2.Session().Replace(msgs[:1])
+		}
+		o.reviewer2.tools.Add(rev2Tool)
+		defer o.reviewer2.tools.Remove("report_review")
+
+		if err := o.reviewer2.Run(ctx, review2Prompt); err != nil {
+			return err
+		}
+		raw2, _ := rev2Tool.Wait()
+		var v2 reviewerReport
+		json.Unmarshal(raw2, &v2)
+		o.journal("PLAN_REVIEW 2 verdict=%s issues=%d", v2.Status, v2.Issues)
+		if v2.Status != "pass" {
+			planPass = false
+		}
+	}
+
+	if planPass {
+		o.journal("PLAN_REVIEW passed")
+		o.mu.Lock()
+		o.state.Status = "developing"
+		o.mu.Unlock()
+		o.saveStateLocked()
+	} else {
+		o.journal("PLAN_REVIEW failed, planner will revise")
+		o.mu.Lock()
+		o.state.Status = "reviewing_fail_plan"
+		o.mu.Unlock()
+		o.saveStateLocked()
+	}
+	return nil
 }
 
 func (o *Orchestrator) runTaskCycle(ctx context.Context) error {
