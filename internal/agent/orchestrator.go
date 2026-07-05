@@ -374,22 +374,30 @@ func (o *Orchestrator) OrchDir() string { return o.orchDir }
 // ReviewPath returns the path for review_N.md.
 func (o *Orchestrator) ReviewPath(n int) string { return o.reviewPath(n) }
 
-// cleanOrchDir removes all session-specific files from the orchestrator
-// directory before starting a fresh run.
+// cleanOrchDir backs up the previous session's orchestrator files before
+// starting fresh. Uses the plan name from state.json for the backup folder.
 func (o *Orchestrator) cleanOrchDir() {
-	for _, path := range []string{
-		o.statePath(), o.briefPath(), o.donePath(), o.rationalePath(), o.planPath(),
-	} {
-		os.Remove(path)
+	entries, err := os.ReadDir(o.orchDir)
+	if err != nil || len(entries) == 0 {
+		return
 	}
-	for i := 1; i < 100; i++ {
-		os.Remove(o.reviewPath(i))
-		os.Remove(o.reviewPath2(i))
-		for r := 2; r < 20; r++ {
-			os.Remove(o.reviewPathRetry(i, r))
-			os.Remove(o.reviewPath2Retry(i, r))
+	// Derive backup name from state.json or timestamp
+	backupName := time.Now().Format("2006-01-02_150405")
+	if state, err := loadState(o.statePath()); err == nil && len(state.Phases) > 0 {
+		name := strings.Map(func(r rune) rune {
+			if r == ' ' || r == '/' || r == '\\' || r == ':' {
+				return '_'
+			}
+			return r
+		}, state.Phases[0].Name)
+		if len(name) > 40 {
+			name = name[:40]
 		}
+		backupName = time.Now().Format("2006-01-02_1504") + "_" + name
 	}
+	backupDir := filepath.Join(filepath.Dir(o.orchDir), "orchestrator_backup_"+backupName)
+	os.Rename(o.orchDir, backupDir)
+	os.MkdirAll(o.orchDir, 0o755)
 }
 
 func (o *Orchestrator) plannerLabel() string { return o.plannerModel }
