@@ -218,14 +218,14 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 		finalPrompt := fmt.Sprintf(`You are the Planner. All development tasks are complete. Perform a final review.
 Read the plan at %s and ALL review files in %s. Use bash to build and test.
 
-If you find NO issues, respond with: {"status": "pass", "summary": "..."}
 If you find issues that need fixing, create a new section at the end of the plan file:
 ## Phase N: Final Fixes
 - [ ] Fix issue 1
 - [ ] Fix issue 2
-Then respond with: {"status": "fail", "issues": N, "summary": "..."}
 
-Call the report_plan tool with your results.`,
+When done, call the report_plan tool with phase_count and task_count.
+If no issues: call report_plan with phase_count=0, task_count=0.
+Do NOT respond with text — use ONLY the report_plan tool.`,
 			o.planPath(), o.orchDir)
 
 		planTool := newReportTool("report_plan",
@@ -503,7 +503,7 @@ with text — use ONLY the tool.`, o.planPath(), userInput)
 
 	o.mu.Lock()
 	o.state = &OrchState{
-		Phase: 1, Task: 1, Phases: phases, Status: "developing",
+		Phase: 1, Task: 1, Phases: phases, Status: "plan_review",
 		PlannerLabel:   o.plannerLabel(),
 		DeveloperLabel: o.developerLabel(),
 		ReviewerLabel:  o.reviewerLabel(),
@@ -526,11 +526,13 @@ func (o *Orchestrator) runPlanReview(ctx context.Context) error {
 
 	// Run reviewer 1
 	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Review the IMPLEMENTATION PLAN (not code).
-Read the plan at %s. Judge: feasibility, completeness, task ordering,
-dependencies, scoping, and whether it covers all user requirements.
+Read the plan at %s. Be strict: flag ANY issue that could hinder
+development or cause future problems.
 
 FAIL if: tasks are too large or vague, dependencies are circular,
-critical steps are missing, or the plan is unrealistic.
+critical steps are missing, the plan is unrealistic, or edge cases
+are ignored. If the plan lacks detail needed to implement correctly,
+FAIL and explain what's missing.
 
 Write your review to %s:
 ## Verdict: PASS or FAIL
