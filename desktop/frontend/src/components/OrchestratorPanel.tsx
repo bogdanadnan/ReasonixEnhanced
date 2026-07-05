@@ -35,8 +35,8 @@ export const OrchestratorPanel = memo(function OrchestratorPanel({ active }: { a
   const roleLabel = () => {
     const pct = progress > 0 ? " · " + progress + "%" : "";
     switch (state.status) {
-      case "planning":
-      case "plan_review": return t("orchestrator.planning") + " · " + (state.plannerLabel || "planner") + pct;
+      case "planning": return t("orchestrator.planning") + " · " + (state.plannerLabel || "planner") + pct;
+      case "plan_review": return t("orchestrator.reviewing") + " · " + (state.reviewerLabel || "reviewer") + pct;
       case "developing": return t("orchestrator.developing") + " · " + (state.developerLabel || "dev") + pct;
       case "reviewing": return t("orchestrator.reviewing") + " · " + (state.reviewerLabel || "reviewer") + pct;
       case "reviewing2": return t("orchestrator.reviewing") + " · " + (state.reviewer2Label || "reviewer2") + pct;
