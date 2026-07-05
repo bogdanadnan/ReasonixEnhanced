@@ -228,11 +228,11 @@ If no issues: call report_plan with phase_count=0, task_count=0.
 Do NOT respond with text — use ONLY the report_plan tool.`,
 			o.planPath(), o.orchDir)
 
-		planTool := newReportTool("report_plan",
+		planTool := newReportTool("report_review",
 			"Report final review results.",
-			json.RawMessage(`{"type":"object","properties":{"phase_count":{"type":"integer"},"task_count":{"type":"integer"}},"required":["phase_count","task_count"]}`), nil)
+			json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), nil)
 		o.planner.tools.Add(planTool)
-		defer o.planner.tools.Remove("report_plan")
+		defer o.planner.tools.Remove("report_review")
 
 		if err := o.planner.Run(ctx, finalPrompt); err != nil {
 			o.journal("FINAL_REVIEW planner error: %v", err)
