@@ -295,25 +295,49 @@ func (o *Orchestrator) rationalePath() string {
 }
 
 func (o *Orchestrator) reviewPath(n int) string {
-	return filepath.Join(o.orchDir, fmt.Sprintf("review_%d.md", n))
+	o.mu.Lock()
+	phase := 0
+	if o.state != nil {
+		phase = o.state.Phase
+	}
+	o.mu.Unlock()
+	return filepath.Join(o.orchDir, fmt.Sprintf("review_p%d_t%d.md", phase, n))
 }
 
 func (o *Orchestrator) reviewPath2(n int) string {
-	return filepath.Join(o.orchDir, fmt.Sprintf("review_%d_b.md", n))
+	o.mu.Lock()
+	phase := 0
+	if o.state != nil {
+		phase = o.state.Phase
+	}
+	o.mu.Unlock()
+	return filepath.Join(o.orchDir, fmt.Sprintf("review_p%d_t%d_b.md", phase, n))
 }
 
 func (o *Orchestrator) reviewPathRetry(n, retry int) string {
-	if retry <= 1 {
-		return filepath.Join(o.orchDir, fmt.Sprintf("review_%d.md", n))
+	o.mu.Lock()
+	phase := 0
+	if o.state != nil {
+		phase = o.state.Phase
 	}
-	return filepath.Join(o.orchDir, fmt.Sprintf("review_%d_r%d.md", n, retry))
+	o.mu.Unlock()
+	if retry <= 1 {
+		return filepath.Join(o.orchDir, fmt.Sprintf("review_p%d_t%d.md", phase, n))
+	}
+	return filepath.Join(o.orchDir, fmt.Sprintf("review_p%d_t%d_r%d.md", phase, n, retry))
 }
 
 func (o *Orchestrator) reviewPath2Retry(n, retry int) string {
-	if retry <= 1 {
-		return filepath.Join(o.orchDir, fmt.Sprintf("review_%d_b.md", n))
+	o.mu.Lock()
+	phase := 0
+	if o.state != nil {
+		phase = o.state.Phase
 	}
-	return filepath.Join(o.orchDir, fmt.Sprintf("review_%d_r%d_b.md", n, retry))
+	o.mu.Unlock()
+	if retry <= 1 {
+		return filepath.Join(o.orchDir, fmt.Sprintf("review_p%d_t%d_b.md", phase, n))
+	}
+	return filepath.Join(o.orchDir, fmt.Sprintf("review_p%d_t%d_r%d_b.md", phase, n, retry))
 }
 
 func (o *Orchestrator) journalPath() string {
