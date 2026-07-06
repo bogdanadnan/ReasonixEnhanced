@@ -233,7 +233,11 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 	}
 
 	// Final review: planner audits all deliverables. If issues found, restart.
-	if o.state != nil && o.state.Status == "done" {
+	o.mu.Lock()
+	phasesLeft := o.state != nil && o.state.Status != "done"
+	stateCopy := o.state
+	o.mu.Unlock()
+	if !phasesLeft && stateCopy != nil {
 		o.state.Status = "final_review"
 		o.saveStateLocked()
 		o.journal("FINAL_REVIEW starting")
