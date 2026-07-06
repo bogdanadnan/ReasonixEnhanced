@@ -160,6 +160,18 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 	// Fresh run: clean stale files from any previous session
 	o.cleanOrchDir()
 
+	// Set initial state so the panel shows progress during planning
+	o.mu.Lock()
+	o.state = &OrchState{
+		Status: "planning",
+		PlannerLabel:   o.plannerLabel(),
+		DeveloperLabel: o.developerLabel(),
+		ReviewerLabel:  o.reviewerLabel(),
+		Reviewer2Label: o.reviewer2Label(),
+	}
+	o.mu.Unlock()
+	o.saveStateLocked()
+
 	// Fresh run: planning phase
 	if err := o.runPlanning(ctx, userInput); err != nil {
 		return fmt.Errorf("orchestrator: planning phase: %w", err)
@@ -520,6 +532,10 @@ with text — use ONLY the tool.`, o.planPath(), userInput)
 // On pass, sets state.Status = "reviewing_fail_plan" or "developing".
 func (o *Orchestrator) runPlanReview(ctx context.Context) error {
 	o.journal("PLAN_REVIEW starting")
+	o.mu.Lock()
+	o.state.Status = "plan_review"
+	o.mu.Unlock()
+	o.saveStateLocked()
 	// Write a plan-review brief
 	brief := fmt.Sprintf("Review the implementation plan at %s.\n\nCheck: feasibility, completeness, task scoping, dependency order, and any missing considerations.\n\nThis plan is NOT code — judge its structure and correctness as a specification.", o.planPath())
 	os.WriteFile(o.briefPath(), []byte(brief), 0o644)
