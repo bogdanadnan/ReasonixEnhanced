@@ -574,13 +574,17 @@ Write your review to %s:
 
 After writing, call the report_review tool.`, o.planPath(), o.reviewPath(0))
 
+	prevCtx1, prevCancel1 := context.WithCancel(ctx)
+	defer prevCancel1()
 	revTool := newReportTool("report_review", "Report plan review verdict.",
-		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), nil)
+		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), prevCancel1)
 	o.reviewer.tools.Add(revTool)
 	defer o.reviewer.tools.Remove("report_review")
 
-	if err := o.reviewer.Run(ctx, reviewPrompt); err != nil {
-		return err
+	if err := o.reviewer.Run(prevCtx1, reviewPrompt); err != nil {
+		if !errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			return err
+		}
 	}
 	raw, _ := revTool.Wait()
 	var verdict reviewerReport
@@ -595,13 +599,17 @@ After writing, call the report_review tool.`, o.planPath(), o.reviewPath(0))
 First reviewer verdict: %s (%s). Same criteria: feasibility, completeness, dependency order.
 Write to %s, then call report_review.`, o.planPath(), verdict.Status, o.reviewPath(0), o.reviewPath2(0))
 
+		prevCtx2, prevCancel2 := context.WithCancel(ctx)
+		defer prevCancel2()
 		rev2Tool := newReportTool("report_review", "Report plan review verdict.",
-			json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), nil)
+			json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), prevCancel2)
 		o.reviewer2.tools.Add(rev2Tool)
 		defer o.reviewer2.tools.Remove("report_review")
 
-		if err := o.reviewer2.Run(ctx, review2Prompt); err != nil {
-			return err
+		if err := o.reviewer2.Run(prevCtx2, review2Prompt); err != nil {
+			if !errors.Is(err, context.Canceled) || ctx.Err() != nil {
+				return err
+			}
 		}
 		raw2, _ := rev2Tool.Wait()
 		var v2 reviewerReport
@@ -789,15 +797,21 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 		o.planPath(), o.rationalePath(), o.briefPath(), reviewDiffInstr, reviewPath)
 
 	var verdict reviewerReport
+	revCtx, revCancel := context.WithCancel(ctx)
+	defer revCancel()
 	reviewTool := newReportTool("report_review",
 		"Report your review verdict to the orchestrator. Call this when your review is complete.",
-		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), nil)
+		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), revCancel)
 	o.journal("REVIEW1_PROMPT task=%d len=%d: %s", state.Task, len(reviewPrompt), strings.ReplaceAll(reviewPrompt, "\n", "⏎"))
 	o.reviewer.tools.Add(reviewTool)
 	defer o.reviewer.tools.Remove("report_review")
 
-	if err := o.reviewer.Run(ctx, reviewPrompt); err != nil {
-		return fmt.Errorf("reviewer: %w", err)
+	if err := o.reviewer.Run(revCtx, reviewPrompt); err != nil {
+		if errors.Is(err, context.Canceled) && ctx.Err() == nil {
+			// report_review cancelled the context — normal
+		} else {
+			return fmt.Errorf("reviewer: %w", err)
+		}
 	}
 
 	// Parse reviewer verdict from tool call
@@ -856,15 +870,21 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 		)
 
 		// Register the report tool BEFORE the run so reviewer2 can call it
+		rev2Ctx, rev2Cancel := context.WithCancel(ctx)
+		defer rev2Cancel()
 		rev2Tool := newReportTool("report_review",
 			"Report your review verdict to the orchestrator.",
-			json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), nil)
+			json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), rev2Cancel)
 		o.journal("REVIEW2_PROMPT task=%d len=%d: %s", state.Task, len(review2Prompt), strings.ReplaceAll(review2Prompt, "\n", "⏎"))
 		o.reviewer2.tools.Add(rev2Tool)
 		defer o.reviewer2.tools.Remove("report_review")
 
-		if err := o.reviewer2.Run(ctx, review2Prompt); err != nil {
-			return fmt.Errorf("second reviewer: %w", err)
+		if err := o.reviewer2.Run(rev2Ctx, review2Prompt); err != nil {
+			if errors.Is(err, context.Canceled) && ctx.Err() == nil {
+				// report_review cancelled the context — normal
+			} else {
+				return fmt.Errorf("second reviewer: %w", err)
+			}
 		}
 
 		raw2, waitErr2 := rev2Tool.Wait()
