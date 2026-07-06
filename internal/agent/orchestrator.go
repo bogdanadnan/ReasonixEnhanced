@@ -1046,9 +1046,12 @@ func parsePlan(path string) ([]OrchPhase, error) {
 	lines := strings.Split(string(data), "\n")
 	var phases []OrchPhase
 	var cur *OrchPhase
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
+	var curTask *string // current task being accumulated (multi-line)
+	for _, rawLine := range lines {
+		line := strings.TrimSpace(rawLine)
+		// Phase heading
 		if strings.HasPrefix(line, "## ") {
+			curTask = nil
 			name := strings.TrimPrefix(line, "## ")
 			phases = append(phases, OrchPhase{Name: name, Tasks: []string{}, Done: []string{}})
 			cur = &phases[len(phases)-1]
@@ -1057,27 +1060,40 @@ func parsePlan(path string) ([]OrchPhase, error) {
 		if cur == nil {
 			continue
 		}
+		// Task marker at line start
 		if strings.HasPrefix(line, "- [ ]") || strings.HasPrefix(line, "- [x]") {
+			curTask = nil
 			task := strings.TrimPrefix(strings.TrimPrefix(line, "- [ ]"), "- [x]")
 			task = strings.TrimPrefix(task, " ")
 			if strings.HasPrefix(line, "- [x]") {
 				cur.Done = append(cur.Done, task)
 			}
 			cur.Tasks = append(cur.Tasks, task)
+			curTask = &cur.Tasks[len(cur.Tasks)-1]
+			continue
+		}
+		// Continuation line (indented content under current task)
+		if curTask != nil && rawLine != line && line != "" {
+			// Append to the current task, separated by newline
+			*curTask += "\n" + rawLine
 		}
 		// Also handle ### - [ ] (H3 + checkbox) and **Task 4a.1:** format
 		if strings.Contains(line, "- [ ]") && !strings.HasPrefix(line, "- [") {
+			curTask = nil
 			rest := line[strings.Index(line, "- [ ]"):]
 			task := strings.TrimPrefix(rest, "- [ ]")
 			task = strings.TrimPrefix(task, " ")
 			cur.Tasks = append(cur.Tasks, task)
+			curTask = &cur.Tasks[len(cur.Tasks)-1]
 		}
 		if strings.Contains(line, "- [x]") && !strings.HasPrefix(line, "- [x") {
+			curTask = nil
 			rest := line[strings.Index(line, "- [x]"):]
 			task := strings.TrimPrefix(rest, "- [x]")
 			task = strings.TrimPrefix(task, " ")
 			cur.Done = append(cur.Done, task)
 			cur.Tasks = append(cur.Tasks, task)
+			curTask = &cur.Tasks[len(cur.Tasks)-1]
 		}
 	}
 	if len(phases) == 0 {
