@@ -543,9 +543,6 @@ After writing, call the report_review tool.`, o.planPath(), o.reviewPath(0))
 
 	revTool := newReportTool("report_review", "Report plan review verdict.",
 		json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), nil)
-	if msgs := o.reviewer.Session().Snapshot(); len(msgs) > 1 {
-		o.reviewer.Session().Replace(msgs[:1])
-	}
 	o.reviewer.tools.Add(revTool)
 	defer o.reviewer.tools.Remove("report_review")
 
@@ -567,9 +564,6 @@ Write to %s, then call report_review.`, o.planPath(), verdict.Status, o.reviewPa
 
 		rev2Tool := newReportTool("report_review", "Report plan review verdict.",
 			json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["pass","fail"]},"issues":{"type":"integer"},"summary":{"type":"string"}},"required":["status","summary"]}`), nil)
-		if msgs := o.reviewer2.Session().Snapshot(); len(msgs) > 1 {
-			o.reviewer2.Session().Replace(msgs[:1])
-		}
 		o.reviewer2.tools.Add(rev2Tool)
 		defer o.reviewer2.tools.Remove("report_review")
 
@@ -716,10 +710,6 @@ issues about workload files — focus ONLY on code/implementation fixes.
 	} // end of !state.DevDone block
 
 	// --- REVIEWING ---
-	// Keep only the system prompt for cache warmth — old reviews are irrelevant
-	if msgs := o.reviewer.Session().Snapshot(); len(msgs) > 1 {
-		o.reviewer.Session().Replace(msgs[:1])
-	}
 	state.Status = "reviewing"
 	o.mu.Lock()
 	o.state = &state
@@ -800,10 +790,6 @@ After writing, call the report_review tool. Do NOT respond with text.`,
 	o.saveStateLocked()
 
 	// --- SECOND REVIEWER (if configured) ---
-	// Keep only the system prompt for cache warmth
-	if o.reviewer2 != nil && len(o.reviewer2.Session().Snapshot()) > 1 {
-		o.reviewer2.Session().Replace(o.reviewer2.Session().Snapshot()[:1])
-	}
 	// Always run if configured, regardless of first reviewer's verdict.
 	// The developer gets the union of all issues from all reviewers.
 	combinedPass := verdict.Status == "pass"
