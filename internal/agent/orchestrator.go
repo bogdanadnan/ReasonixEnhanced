@@ -191,6 +191,10 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 		}
 		// Plan failed review — nudge planner and re-parse
 		o.journal("PLAN_REVIEW retry=%d — asking planner to revise", planRetries+1)
+		o.mu.Lock()
+		o.state.Status = "planning"
+		o.mu.Unlock()
+		o.saveStateLocked()
 		revisePrompt := fmt.Sprintf("The reviewers rejected your plan. Read the review at %s and %s. Revise the plan at %s to address ALL issues. Then call report_plan again.",
 			o.reviewPath(0), func() string {
 				if o.reviewer2 != nil {

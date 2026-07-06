@@ -40,6 +40,7 @@ export const OrchestratorPanel = memo(function OrchestratorPanel({ active }: { a
       case "developing": return t("orchestrator.developing") + " · " + (state.developerLabel || "dev") + pct;
       case "reviewing": return t("orchestrator.reviewing") + " · " + (state.reviewerLabel || "reviewer") + pct;
       case "reviewing2": return t("orchestrator.reviewing") + " · " + (state.reviewer2Label || "reviewer2") + pct;
+      case "final_review": return t("orchestrator.reviewing") + " · " + (state.plannerLabel || "planner") + pct;
       case "done": return t("orchestrator.done") + " · " + progress + "%";
       default: return state.status;
     }
