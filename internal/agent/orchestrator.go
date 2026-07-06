@@ -199,9 +199,16 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 				return ""
 			}(), o.planPath())
 		o.planner.Session().Add(provider.Message{Role: provider.RoleUser, Content: revisePrompt})
+		// Register report_plan tool for the revision run
+		revPlanTool := newReportTool("report_plan",
+			"Report planning results.",
+			json.RawMessage(`{"type":"object","properties":{"phase_count":{"type":"integer"},"task_count":{"type":"integer"}},"required":["phase_count","task_count"]}`), nil)
+		o.planner.tools.Add(revPlanTool)
 		if err := o.planner.Run(ctx, "Revise the plan to address reviewer feedback."); err != nil {
+			o.planner.tools.Remove("report_plan")
 			return fmt.Errorf("orchestrator: plan revision: %w", err)
 		}
+		o.planner.tools.Remove("report_plan")
 		// Re-parse the revised plan
 		phases, err := parsePlan(o.planPath())
 		if err != nil {
