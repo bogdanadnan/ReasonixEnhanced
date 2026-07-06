@@ -456,29 +456,35 @@ func (o *Orchestrator) reviewer2Label() string { return o.reviewer2Model }
 
 func (o *Orchestrator) runPlanning(ctx context.Context, userInput string) error {
 	slog.Info("orchestrator: planning phase")
-	prompt := fmt.Sprintf(`You are the Planner in a developer orchestrator. Given the user's request,
-create a detailed implementation plan. First explore the codebase with
-read_file, glob, and grep to understand the existing structure, then write
-the plan to %s.
+	prompt := fmt.Sprintf(`You are the Planner in a developer orchestrator. Create a detailed
+implementation plan by writing it to %s.
 
-CRITICAL FORMAT RULES — the orchestrator parses this file automatically:
-- Phases start with "## Phase N: Name" (exactly two hash marks, space, "Phase", number, colon, name)
-- Tasks start with "- [ ]" at the beginning of the line (dash, space, bracket, space, bracket, space)
-- Completed tasks use "- [x]" (same format with x)
-- Do NOT use ### headings for tasks. Do NOT nest tasks under sub-headings.
-- Each task should be concrete and implementable in one developer session.
+CRITICAL FORMAT RULES — a parser reads this file, not a human:
+- Phases: "## Phase N: Name" (two #, space, Phase, number, colon, name)
+- Tasks: "- [ ]" at LINE START, one sentence each, one implementable unit
+- A task is concise: "Create src/nodes.h" — NOT "The file should..."
+- Do NOT put implementation details, code snippets, notes, or warnings as
+  tasks. Put those in a separate ## Notes section or as indented sub-bullets.
+- Do NOT use ### headings for tasks. No bold **Task X:** markers.
+- Do NOT put multi-line descriptions or code snippets in task items.
 
-Example of CORRECT format:
+WRONG examples (parser will break):
+  "- [ ] For vfs_rmdir, use walk_vp = nx; continue"
+  "- [ ] Do NOT add hash fast-reject to dirchain_list"
+  "- [x] **Task 4a.1: Create nodes.h**" (bold = not a task)
+  "### - [ ] Task 5a.1" (H3 heading = not a task)
+
+CORRECT format:
 ## Phase 1: Project Setup
-- [ ] Create the main Go module
-- [ ] Add the orchestrator config type
+- [ ] Create src/nodes.h with include guards and function declarations
+- [ ] Update CMakeLists.txt to compile src/nodes.c
 
-## Phase 2: Core Logic
-- [ ] Implement the Run loop
-- [ ] Add JSON validation
+## Notes
+- For vfs_rmdir: use walk_vp = nx; continue pattern
+- Do NOT modify dirchain_list — it is correct as-is
 
-When you're done, call the report_plan tool with your results. Do NOT respond
-with text — use ONLY the tool.`, o.planPath(), userInput)
+Write the plan to %s now. Then call report_plan. Stop after the tool.`,
+		o.planPath(), o.planPath())
 
 	planTool := newReportTool("report_plan",
 		"Report planning results back to the orchestrator. Call this when your plan is complete.",
