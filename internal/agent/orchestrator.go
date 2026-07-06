@@ -758,6 +758,11 @@ issues about workload files — focus ONLY on code/implementation fixes.
 workload brief is not fully implemented. FAIL for ANY issue — correctness,
 performance, code quality, edge cases, error handling, missing tests.
 
+Focus on the CODE and FUNCTIONALITY, not on process. It does not matter
+which commit the work was done in, or whether the developer called
+report_work immediately. Judge ONLY whether the deliverable (the actual
+code changes) meets the brief requirements.
+
 Also flag potential FUTURE issues: architectural concerns, tech debt,
 code that will cause problems later even if it works now. These are
 valid reasons to FAIL — explain why the issue will cause future harm.
