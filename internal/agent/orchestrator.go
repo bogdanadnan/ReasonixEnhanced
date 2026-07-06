@@ -754,30 +754,25 @@ issues about workload files — focus ONLY on code/implementation fixes.
 	if o.autoCommit {
 		reviewDiffInstr = "if this is a git repo, use `git log -1 -p` to see committed changes"
 	}
-	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Your verdict is strict: FAIL if ANY item in the
-workload brief is not fully implemented. FAIL for ANY issue — correctness,
-performance, code quality, edge cases, error handling, missing tests.
+	reviewPrompt := fmt.Sprintf(`You are the Reviewer. Read the full implementation plan at %s
+before starting — understand what comes before and after this task.
 
-Focus on the CODE and FUNCTIONALITY, not on process. It does not matter
-which commit the work was done in, or whether the developer called
-report_work immediately. Judge ONLY whether the deliverable (the actual
-code changes) meets the brief requirements.
+Your verdict: FAIL if ANY brief item is not fully implemented, or if
+the code has ANY correctness/performance/quality issue. FAIL if the
+code will break or block future tasks in the plan.
 
-Also flag potential FUTURE issues: architectural concerns, tech debt,
-code that will cause problems later even if it works now. These are
-valid reasons to FAIL — explain why the issue will cause future harm.
+BUT — do NOT fail for issues that later tasks will resolve. If a test
+is missing but a later task adds tests, that's OK. If code won't compile
+because a later task adds the missing piece, that's OK. Judge this task
+in context of the full plan.
 
-If you discover bugs in code unrelated to the task brief, FAIL with
-[BLOCKER] — the developer must fix them before proceeding. Any bug
-that could create problems is a valid FAIL reason.
+Focus on CODE and FUNCTIONALITY, not process. It does not matter which
+commit the work was in, or whether report_work was called immediately.
 
-The developer may have written a rationale at %s explaining why something
-was skipped or done differently. Read it. You may accept a deviation ONLY if:
-1. The rationale clearly explains WHY it was necessary, AND
-2. You cannot find a working alternative after inspecting the code.
+Also flag FUTURE concerns and unrelated bugs with [BLOCKER].
 
-If you find an alternative the developer missed, FAIL with [RATIONALE]
-and describe your alternative as pseudocode or concrete steps.
+The developer's rationale is at %s. Accept a deviation ONLY if the
+rationale explains WHY and you cannot find a working alternative.
 
 Read the workload brief at %s — this is THE deliverable spec.
 %s. Also inspect changed files with read_file.
@@ -788,10 +783,10 @@ Write your review to %s:
 ## Verdict: PASS or FAIL
 ## Summary
 ## Issues (if FAIL)
-1. Issue (prefix [RATIONALE] for challenged rationale, [FUTURE] for forward-looking concerns)
+1. Issue (prefix [RATIONALE], [FUTURE], or [BLOCKER])
 
 After writing, call the report_review tool. Do NOT respond with text.`,
-		o.rationalePath(), o.briefPath(), reviewDiffInstr, reviewPath)
+		o.planPath(), o.rationalePath(), o.briefPath(), reviewDiffInstr, reviewPath)
 
 	var verdict reviewerReport
 	reviewTool := newReportTool("report_review",
