@@ -1030,7 +1030,7 @@ func parsePlan(path string) ([]OrchPhase, error) {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "## ") {
 			name := strings.TrimPrefix(line, "## ")
-			phases = append(phases, OrchPhase{Name: name})
+			phases = append(phases, OrchPhase{Name: name, Tasks: []string{}, Done: []string{}})
 			cur = &phases[len(phases)-1]
 			continue
 		}
