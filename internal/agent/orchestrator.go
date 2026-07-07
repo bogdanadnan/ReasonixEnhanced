@@ -487,8 +487,11 @@ CORRECT format:
 - For vfs_rmdir: use walk_vp = nx; continue pattern
 - Do NOT modify dirchain_list — it is correct as-is
 
-Write the plan to %s now. Then call report_plan. Stop after the tool.`,
-		o.planPath(), o.planPath())
+Write the plan to %s now. Then call report_plan. Stop after the tool.
+
+User request:
+%s`,
+		o.planPath(), userInput)
 
 	planTool := newReportTool("report_plan",
 		"Report planning results back to the orchestrator. Call this when your plan is complete.",
