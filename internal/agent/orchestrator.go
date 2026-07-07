@@ -149,6 +149,21 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 		o.mu.Lock()
 		o.state = state
 		o.mu.Unlock()
+		// Inject user steer into the currently active agent
+		if userInput != "" {
+			target := o.developer
+			switch o.state.Status {
+			case "planning":
+				target = o.planner
+			case "plan_review", "reviewing":
+				target = o.reviewer
+			case "reviewing2":
+				target = o.reviewer2
+			}
+			if target != nil {
+				target.Session().Add(provider.Message{Role: provider.RoleUser, Content: "[User] " + userInput})
+			}
+		}
 		for !o.isDone() {
 			if err := o.runTaskCycle(ctx); err != nil {
 				return fmt.Errorf("orchestrator: task cycle: %w", err)
