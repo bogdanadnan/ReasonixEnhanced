@@ -708,7 +708,7 @@ issues about workload files — focus ONLY on code/implementation fixes.
 `, state.Retries, paths)
 	}
 
-	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nOnly implement what the brief asks for — do NOT work ahead on future tasks.\nIf you encounter bugs in unrelated code that block your work, fix them.\nRead existing code with read_file before editing. Run build/tests with bash after changes.%s%s\n\nEvery item in the brief must be fully covered. Any deviation, omission, or\nshortcut will cause the reviewer to FAIL your submission unless you document it in the rationale parameter of the report_work tool.\n\nWhen done, call the report_work tool with:\n- status: \"done\"\n- summary: brief summary of what you implemented\n- rationale: explanation of any deviations, skipped items, or key decisions\n\nAfter calling report_work, stop immediately — your turn is complete.\nDo NOT call any other tools after report_work.",
+	devPrompt := fmt.Sprintf("You are the Developer. Read the workload brief at %s and implement it.\nOnly implement what the brief asks for — do NOT work ahead on future tasks.\nIf you encounter bugs in unrelated code that block your work, fix them.\nIf a test reveals a bug in the system, fix the system — never adjust the test\nto bypass the problem.%s%s\n\nEvery item in the brief must be fully covered. Any deviation, omission, or\nshortcut will cause the reviewer to FAIL your submission unless you document it in the rationale parameter of the report_work tool.\n\nWhen done, call the report_work tool with:\n- status: \"done\"\n- summary: brief summary of what you implemented\n- rationale: explanation of any deviations, skipped items, or key decisions\n\nAfter calling report_work, stop immediately — your turn is complete.\nDo NOT call any other tools after report_work.",
 		o.briefPath(), reviewNudge, commitInstr)
 
 	devCtx, devCancel := context.WithCancel(ctx)
@@ -781,7 +781,9 @@ in context of the full plan.
 Focus on CODE and FUNCTIONALITY, not process. It does not matter which
 commit the work was in, or whether report_work was called immediately.
 
-Also flag FUTURE concerns and unrelated bugs with [BLOCKER].
+Flag unrelated bugs as [BLOCKER]. If the developer adjusted a test to hide
+a system bug instead of fixing the system, flag as [BYPASS] — the fix
+belongs in the system, not the test.
 
 The developer's rationale is at %s. Accept a deviation ONLY if the
 rationale explains WHY and you cannot find a working alternative.
@@ -795,7 +797,7 @@ Write your review to %s:
 ## Verdict: PASS or FAIL
 ## Summary
 ## Issues (if FAIL)
-1. Issue (prefix [RATIONALE], [FUTURE], or [BLOCKER])
+1. Issue (prefix [RATIONALE], [FUTURE], [BLOCKER], or [BYPASS])
 
 After writing, call the report_review tool. Do NOT respond with text.`,
 		o.planPath(), o.rationalePath(), o.briefPath(), reviewDiffInstr, reviewPath)
