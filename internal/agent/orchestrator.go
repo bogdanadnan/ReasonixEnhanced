@@ -434,6 +434,31 @@ func (o *Orchestrator) SetDeveloper(a *Agent) {
 	o.developer = a
 }
 
+// Steer injects a user message into the currently active agent's session.
+func (o *Orchestrator) Steer(text string) {
+	o.mu.Lock()
+	status := ""
+	if o.state != nil {
+		status = o.state.Status
+	}
+	o.mu.Unlock()
+
+	var target *Agent
+	switch status {
+	case "planning":
+		target = o.planner
+	case "plan_review", "reviewing":
+		target = o.reviewer
+	case "reviewing2":
+		target = o.reviewer2
+	default:
+		target = o.developer
+	}
+	if target != nil {
+		target.Session().Add(provider.Message{Role: provider.RoleUser, Content: "[User steer] " + text})
+	}
+}
+
 // OrchDir returns the orchestrator working directory.
 func (o *Orchestrator) OrchDir() string { return o.orchDir }
 

@@ -1275,13 +1275,17 @@ func (c *Controller) refreshInteractiveGate() {
 func (c *Controller) Steer(text string) {
 	c.mu.Lock()
 	exec := c.executor
+	orch := c.orch
 	running := c.running
 	c.mu.Unlock()
-	if exec == nil {
-		return
-	}
 	if running {
-		exec.Steer(text)
+		if orch != nil {
+			orch.Steer(text)
+			return
+		}
+		if exec != nil {
+			exec.Steer(text)
+		}
 		return
 	}
 	// Agent not running — frontend's runningRef was stale.
