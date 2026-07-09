@@ -194,8 +194,10 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 
 	// Plan review: reviewers audit the plan before any code is written.
 	// If they fail, the planner must revise. Loop until pass or max retries.
+	// Each round uses separate files (plan_r1.md, review_0_r1.md) to prevent
+	// confusion from in-place overwrites. Final accepted plan is renamed to plan.md.
 	for planRetries := 0; planRetries < o.maxRetries; planRetries++ {
-		if err := o.runPlanReview(ctx); err != nil {
+		if err := o.runPlanReview(ctx, planRetries+1); err != nil {
 			return fmt.Errorf("orchestrator: plan review: %w", err)
 		}
 		o.mu.Lock()
@@ -210,13 +212,15 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 		o.state.Status = "planning"
 		o.mu.Unlock()
 		o.saveStateLocked()
-		revisePrompt := fmt.Sprintf("The reviewers rejected your plan. Read the review at %s and %s. Revise the plan at %s to address ALL issues. Then call report_plan again.",
-			o.reviewPath(0), func() string {
+		prevReviewFile := o.reviewPathRetry(0, planRetries+1)
+		prevReviewFile2 := o.reviewPath2Retry(0, planRetries+1)
+		revisePrompt := fmt.Sprintf("The reviewers rejected your plan. Read the review at %s and %s. Revise the plan and write it to %s (a new round-specific file). Address ALL issues. Then call report_plan again.",
+			prevReviewFile, func() string {
 				if o.reviewer2 != nil {
-					return "and " + o.reviewPath2(0)
+					return "and " + prevReviewFile2
 				}
 				return ""
-			}(), o.planPath())
+			}(), filepath.Join(o.orchDir, fmt.Sprintf("plan_r%d.md", planRetries+2)))
 		o.planner.Session().Add(provider.Message{Role: provider.RoleUser, Content: revisePrompt})
 		// Register report_plan tool for the revision run
 		revPlanTool := newReportTool("report_plan",
@@ -593,15 +597,22 @@ User request:
 }
 
 // runPlanReview sends the plan to reviewers before development starts.
-// On pass, sets state.Status = "reviewing_fail_plan" or "developing".
-func (o *Orchestrator) runPlanReview(ctx context.Context) error {
-	o.journal("PLAN_REVIEW starting")
+// round is the 1-based review round number (1 for first review, 2 for first retry).
+func (o *Orchestrator) runPlanReview(ctx context.Context, round int) error {
+	o.journal("PLAN_REVIEW starting round=%d", round)
 	o.mu.Lock()
 	o.state.Status = "plan_review"
 	o.mu.Unlock()
 	o.saveStateLocked()
+
+	planFile := o.planPath()
+	reviewFile := o.reviewPathRetry(0, round)
+	reviewFile2 := o.reviewPath2Retry(0, round)
+	if round > 1 {
+		planFile = filepath.Join(o.orchDir, fmt.Sprintf("plan_r%d.md", round))
+	}
 	// Write a plan-review brief
-	brief := fmt.Sprintf("Review the implementation plan at %s.\n\nCheck: feasibility, completeness, task scoping, dependency order, and any missing considerations.\n\nThis plan is NOT code — judge its structure and correctness as a specification.", o.planPath())
+	brief := fmt.Sprintf("Review the implementation plan at %s.\n\nCheck: feasibility, completeness, task scoping, dependency order, and any missing considerations.", planFile)
 	os.WriteFile(o.briefPath(), []byte(brief), 0o644)
 
 	// Run reviewer 1
@@ -619,7 +630,7 @@ Write your review to %s:
 ## Summary
 ## Issues (if FAIL)
 
-After writing, call the report_review tool.`, o.planPath(), o.reviewPath(0))
+After writing, call the report_review tool.`, planFile, reviewFile)
 
 	prevCtx1, prevCancel1 := context.WithCancel(ctx)
 	defer prevCancel1()
@@ -644,7 +655,7 @@ After writing, call the report_review tool.`, o.planPath(), o.reviewPath(0))
 	if o.reviewer2 != nil {
 		review2Prompt := fmt.Sprintf(`You are the Second Reviewer. Review the IMPLEMENTATION PLAN at %s.
 First reviewer verdict: %s (%s). Same criteria: feasibility, completeness, dependency order.
-Write to %s, then call report_review.`, o.planPath(), verdict.Status, o.reviewPath(0), o.reviewPath2(0))
+Write to %s, then call report_review.`, planFile, verdict.Status, reviewFile, reviewFile2)
 
 		prevCtx2, prevCancel2 := context.WithCancel(ctx)
 		defer prevCancel2()
@@ -669,6 +680,13 @@ Write to %s, then call report_review.`, o.planPath(), verdict.Status, o.reviewPa
 
 	if planPass {
 		o.journal("PLAN_REVIEW passed")
+		// If round > 1, copy the accepted plan to plan.md and re-parse
+		if round > 1 {
+			data, _ := os.ReadFile(planFile)
+			if len(data) > 0 {
+				os.WriteFile(o.planPath(), data, 0o644)
+			}
+		}
 		o.mu.Lock()
 		o.state.Status = "developing"
 		o.mu.Unlock()
