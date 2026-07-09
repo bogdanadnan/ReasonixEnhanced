@@ -244,6 +244,14 @@ func (o *Orchestrator) Run(ctx context.Context, userInput string) error {
 		o.saveStateLocked()
 	}
 
+	// Re-parse plan.md with the final accepted plan
+	if phases, err := parsePlan(o.planPath()); err == nil && len(phases) > 0 {
+		o.mu.Lock()
+		o.state.Phases = phases
+		o.mu.Unlock()
+		o.saveStateLocked()
+	}
+
 	// Development loop
 	for !o.isDone() {
 		if err := o.runTaskCycle(ctx); err != nil {
@@ -297,7 +305,11 @@ Do NOT respond with text — use ONLY the report_plan tool.`,
 		o.journal("FINAL_REVIEW verdict=%s issues=%d", finalVerdict.Status, finalVerdict.Issues)
 		if finalVerdict.Status == "fail" {
 			slog.Info("orchestrator: final review found issues, restarting", "issues", finalVerdict.Issues)
-			o.cleanOrchDir()
+			// Set status to done so the recursive Run starts fresh, not resume
+			o.mu.Lock()
+			o.state.Status = "done"
+			o.mu.Unlock()
+			o.saveStateLocked()
 			return o.Run(ctx, "Fix the issues found in the final review: "+finalVerdict.Summary)
 		}
 		// Final review passed — mark truly done
